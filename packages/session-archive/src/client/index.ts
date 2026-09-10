@@ -1,8 +1,11 @@
 /**
  * Browser half of the session archive plugin.
  *
- * One registration, into the host's own `sidebar.footer.action` slot. Nothing
- * about the built-in sidebar is patched, shadowed, or reached into.
+ * Two surfaces. The archive area goes into the host's own
+ * `sidebar.footer.action` slot, so nothing about the sidebar is patched to get
+ * it. The per-row bulk-archive button has no slot to go into — the built-in
+ * workspace browser exposes none anywhere near a row — and is injected into the
+ * row's action strip instead, behind the kill-switch in `sidebar/`.
  *
  * @module @dsh-plugins/session-archive/client
  */
@@ -10,7 +13,9 @@
 import type { Context } from '@deepseek-ai/cordis'
 
 import { createArchivePanel } from './panel/ArchivePanel.js'
+import { installSidebarButtons } from './sidebar/install.js'
 import { text } from './text.js'
+import { createArchiveApi } from './transport/archive-api.js'
 
 export const name = 'session-archive-client'
 
@@ -41,4 +46,6 @@ export function apply(ctx: Context): void {
       ArchivePanel,
     ),
   )
+
+  installSidebarButtons(ctx, createArchiveApi(ctx))
 }

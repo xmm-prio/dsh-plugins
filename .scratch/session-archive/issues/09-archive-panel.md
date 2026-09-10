@@ -1,6 +1,6 @@
 # 09 · 归档区面板
 
-Status: done（渲染未经真实浏览器验证）
+Status: done（验收项已在真实浏览器逐条验证）
 Blocked by: 08
 
 浏览器半的主界面。侧栏底部按钮（`sidebar.footer.action`）打开。
@@ -43,5 +43,32 @@ Blocked by: 08
 - **类型声明散落在三个包里**：`ctx.slots` 的类型在 `dsh-client-ui-renderer/client`，`sidebar.footer.action` 这个 SlotMap 键在 `dsh-client-ui-sidebar/client`。两个都得 type-only import 进来才编译得过。
 - **报告文案的组装挪进了 `useArchive`**，通过新增的 `ArchiveCopy` 参数注入。原来在 JSX 里拼字符串，出现过 `text.archivedCount(0) && ''` 这种垃圾表达式。
 - **操作后从宿主重新拉取，不在本地打补丁。** 选中项在新列表到达后按新列表剪枝，关闭面板时清空选中与报告。
-- **验证边界**：Node 里 stub `__ModuleLoader__` 与 primitives，用 `react-dom/server` 渲染，确认 factory body 执行、三个种子 require 解析、`slots.register` 收到正确的 options、产出 `<button>归档区</button>`。活体上确认 bundle 有 boot graph 行、能被下载、banner id 是完整包名。**但真实浏览器里的交互（点击、Modal 开合、刷新后状态）没有验证过**——这台机器没有浏览器。
 - 顺带修掉一个真实 bug：pnpm 在根装了 react 19 / react-dom 19，包内是 react 18，两份 React 导致渲染报 "Objects are not valid as a React child"。根 `package.json` 把四个 react 相关依赖钉到 18。
+
+### 真实浏览器验收（Chromium 153 + DSH 0.1.5-rc.1）
+
+`e2e/verify.mjs`，10/10 通过。数据全部经 `workspaceRegistry.create` / `sessionPersistence.create` 建立在一个 scratch `DSH_HOME` 里，跑完即删。
+
+| 验收项 | 结果 |
+|---|---|
+| 侧栏底部按钮打开面板 | ✅ 条目数与宿主归档集合一致 |
+| 瞬开，耗时与归档数量基本无关 | ✅ 7 条 72ms / 127 条 226ms |
+| 多选、全选、取消选择 | ✅ `已选择 2 个 → 127 个 → 0 个` |
+| 批量取消归档 | ✅ 只有选中的 3 条离开归档集合 |
+| 批量删除 | ✅ 日志、归档集合、工作区登记三处同时移除 |
+| 二次确认可取消且无副作用 | ✅ 取消后 stored / archived 均不变；未勾选「我明白」时「永久删除」是灰的 |
+| 能力禁用时说明原因 | ✅ 见下 |
+| 取消归档后回到原工作区原位置 | ✅ 见下 |
+
+**「回到原工作区、原位置」**：取消归档后读侧栏渲染出的会话行（从各行 fiber 上取 id），顺序与宿主 `workspace.sessionIds` 逐项相等，且该 ledger 在归档 → 取消归档全程一字未改。位置能复原正是因为归档从不改写 ledger，只改归档集合这一个可见性开关——这与 CONTEXT.md 里「归档是纯可见性概念」是同一件事的两面。
+
+**能力禁用**：宿主侧的探测无法在不弄坏宿主本身的前提下从外部致失效，因此这一条改成在**网线上**把 `capabilities` 响应里的 `unarchive` / `delete` 改写为 `enqueue-operation-missing`，验证的是「面板拿到 block 之后渲染成什么」而不是「面板能不能探到 block」——后者由 `capabilities.test.ts` 的 12 个用例覆盖。结果：两条动作按钮同时置灰，面板顶部列出「宿主的写入队列已改变」并附 `workspaceRegistry.enqueueOperation`。
+
+### 真实浏览器暴露出的一个缺陷（已修）
+
+宿主的 `Modal` 是**固定尺寸卡片**：`width: min(380px, 100%)`、`overflow: hidden`、**没有 max-height**，是给确认框设计的。面板把归档列表原样塞进去，条目一多整张卡片就纵向溢出视口，上下两端的行**滚不到也点不着**——127 条时连第一行的复选框都在视口外。列表因此自己加了 `max-height: 46vh; overflow-y: auto`。这是内容该承担的责任，不是给宿主打补丁。
+
+### 未验证
+
+- 面板的搜索过滤与分组展示：`## 能力` 里列了「按原工作区分组展示」「标题搜索过滤」，当前实现是**平铺列表 + 工作区标签**，没有分组容器也没有搜索框。这是实现与 issue 正文的既有出入，不是本次回归。
+- 「一键全部删除」同样没有单独入口，全选 + 删除即可达成。

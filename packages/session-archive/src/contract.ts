@@ -141,36 +141,12 @@ export interface BulkArchiveResult {
   readonly refusal?: { readonly code: BulkRefusalCode; readonly detail: string }
 }
 
-// ------------------------------------------------------------------ groups
-
-/**
- * One row of the built-in sidebar, as a bulk-archive target.
- *
- * Composed on the host so the membership rules live in exactly one place: the
- * browser half never re-derives which sessions a row displays.
- */
-export interface ArchivableGroup {
-  /** The workspace, or undefined for the ungrouped row. */
-  readonly workspaceId: string | undefined
-  readonly title: string | undefined
-  /** Sessions the built-in sidebar currently renders under this row. */
-  readonly visibleCount: number
-  /** Of those, how many a bulk archive would actually archive. */
-  readonly archivableCount: number
-}
-
-/** Payload of the groups endpoint. */
-export interface GroupsResult {
-  readonly groups: readonly ArchivableGroup[]
-}
-
 // ------------------------------------------------------------------ endpoints
 
 /** Request payload of every endpoint, keyed by operation. */
 export interface EndpointMap {
   capabilities: { readonly request: Record<string, never>; readonly response: CapabilitiesResult }
   list: { readonly request: Record<string, never>; readonly response: ArchiveListResult }
-  groups: { readonly request: Record<string, never>; readonly response: GroupsResult }
   unarchive: { readonly request: { readonly ids: readonly string[] }; readonly response: BatchResult }
   delete: { readonly request: { readonly ids: readonly string[] }; readonly response: BatchResult }
   archiveWorkspace: { readonly request: { readonly workspaceId: string }; readonly response: BulkArchiveResult }
@@ -182,7 +158,6 @@ export interface EndpointMap {
 export const OPERATIONS = [
   'capabilities',
   'list',
-  'groups',
   'unarchive',
   'delete',
   'archiveWorkspace',

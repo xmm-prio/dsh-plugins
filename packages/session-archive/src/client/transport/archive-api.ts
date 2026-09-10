@@ -79,7 +79,6 @@ export function createArchiveApi(ctx: Context): ArchiveApi {
   return {
     capabilities: (payload, signal) => invoke('capabilities', payload, signal),
     list: (payload, signal) => invoke('list', payload, signal),
-    groups: (payload, signal) => invoke('groups', payload, signal),
     unarchive: (payload, signal) => invoke('unarchive', payload, signal),
     delete: (payload, signal) => invoke('delete', payload, signal),
     archiveWorkspace: (payload, signal) => invoke('archiveWorkspace', payload, signal),

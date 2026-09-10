@@ -7,7 +7,6 @@
  */
 
 import type {
-  ArchivableGroup,
   ArchiveListResult,
   ArchivedSessionEntry,
   BatchResult,
@@ -16,10 +15,9 @@ import type {
   CapabilitiesResult,
   CapabilityId,
   CapabilityReport,
-  GroupsResult,
   OperationFailure,
 } from '../contract.js'
-import { groupSessions, planBulkArchive } from '../domain/grouping.js'
+import { planBulkArchive } from '../domain/grouping.js'
 import type { BulkArchiveScope, GroupingInput, SessionListEntry } from '../domain/grouping.js'
 import type { AgentTeardown } from './agent-teardown.js'
 import type { ArchiveWriter } from './archive-writer.js'
@@ -99,36 +97,6 @@ export class SessionArchiveService {
       unresolved: [...archived].filter((id) => !found.has(id)),
       degraded: catalog.degraded,
     }
-  }
-
-  /**
-   * The bulk-archive targets: one row per workspace, plus ungrouped.
-   *
-   * The counts come from the same grouping the archive itself runs, so what the
-   * panel offers and what the action does can never disagree.
-   *
-   * @param signal - caller cancellation.
-   * @returns the rows, in registry order, with ungrouped last.
-   */
-  async groups(signal?: AbortSignal): Promise<GroupsResult> {
-    const input = await this.groupingInput(signal)
-    const grouping = groupSessions(input)
-    const titles = new Map(this.deps.registry.list().map((workspace) => [workspace.id, workspace.title]))
-
-    const groups: ArchivableGroup[] = grouping.workspaces.map((group) => ({
-      workspaceId: group.workspaceId,
-      title: titles.get(group.workspaceId),
-      visibleCount: group.visible.length,
-      archivableCount: planBulkArchive({ ...input, scope: { kind: 'workspace', workspaceId: group.workspaceId } })
-        .targets.length,
-    }))
-    groups.push({
-      workspaceId: undefined,
-      title: undefined,
-      visibleCount: grouping.ungrouped.visible.length,
-      archivableCount: planBulkArchive({ ...input, scope: { kind: 'ungrouped' } }).targets.length,
-    })
-    return { groups }
   }
 
   /** Take sessions out of the archive set, making them visible again. */

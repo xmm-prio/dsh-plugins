@@ -1,6 +1,6 @@
 # 11 · 侧栏行内按钮注入
 
-Status: blocked（无浏览器，两处运行期未知项无法验证）
+Status: done（两处运行期未知项已实测，实现已在真实浏览器上通过验收）
 Blocked by: 08
 
 在工作区行与未分组行上各加一个「一键归档」行内按钮。这是全插件唯一一处必须靠 DOM 改写与 React fiber 回溯的地方——内置侧栏的会话行菜单与工作区行菜单都是硬编码数组，未分组标题连菜单都没有，整个 workspace browser 里也没有任何 `onContextMenu`。
@@ -42,17 +42,34 @@ Blocked by: 08
 
 ## Comments
 
-**没有实现，阻塞。** 两处运行期未知项在这台机器上无法验证：
+**已实现。** 先前阻塞的两处运行期未知项在 Chromium 153 + 真实 DSH 0.1.5-rc.1 上测掉了，完整数据见 `host-internals.md` §11.5，结论：
 
-1. 通过 `__reactFiber$<随机后缀>` 键走到 `props.group` 拿工作区 id ——键名带随机后缀，且 fiber 结构完全是 React 内部实现细节，只能在真实渲染树上确认。
-2. React 的协调过程会不会把外部注入到 `.rowActions` 里的 DOM 节点清掉 ——只能在真实浏览器里观察重渲染。
+1. **fiber 路径可用，但深度不是常数。** `group` 在 `ProjectRowItem.memoizedProps` 上；从行的动作条往上走，工作区行是 4 层、未分组行是 2 层——差的两层是工作区行独有的 tooltip 包裹。写死层数会在未分组行上直接失效，所以走「向上有界搜索（上限 8）+ 对 `group` 做五字段形状校验」。
+2. **React 不会清掉注入节点**，只要承载它的行没有 unmount：展开、收起、悬停、整组归档、点「＋」、相邻组整体消失，标记全部原位存活，位置也没被重排过。真正会带走它的只有整行 unmount（收成 56px 轨、视口收窄），且带走时不留残骸。
 
-开发环境没有浏览器。Node 里 stub `__ModuleLoader__` 能证明 factory 执行、能证明 `slots.register` 被正确调用，但证明不了上面两件事——它们都依赖真实的 React 协调与真实的 DOM。
+所以这条路是可依赖的，**存活不需要防御，重新注入才需要**——模块的重心因此落在「re-scan 幂等」而不是「MutationObserver 里把节点抢回来」。
 
-按要求，不发一个猜出来的实现。
+### 实现
 
-**替代方案（已实现）**：批量归档做在插件自己的面板里，按行提供，数据来自宿主侧新增的 `groups` 端点（`ArchivableGroup { workspaceId, title, visibleCount, archivableCount }`，`workspaceId === undefined` 即未分组行）。成员判据留在宿主上，浏览器侧只展示。这比 DOM 注入耦合更低，也不依赖内置侧栏的 class 名与 DOM 结构——原方案里「别硬编码 lightningcss 哈希、用 `[class*="_rowActions"]` 后缀匹配」这类要求本身就说明了那条路有多脆。
+- `client/sidebar/adapter.ts` —— 唯一的识别模块，带 `ADAPTER_VERSION`。上游改版时要替换的正好是这一个文件。
+- `client/sidebar/row-buttons.ts` —— 注入、标注、幂等 re-scan、kill-switch、卸载清理。
+- `client/sidebar/install.ts` —— 挂 `MutationObserver` 与 `pointerover`，`ctx.effect` 托管，卸载即撤。
 
-`src/client/panel/BulkActions.tsx` 的文件头注释记录了这个决定的原因。
+### 与 issue 正文的四处出入
 
-**若将来要重开这个 issue**，需要的东西是：一台有浏览器的机器，先只做探测（读 fiber 拿 `props.group` 打日志、注入一个节点后触发侧栏重渲染看它还在不在），两项都确认之后再谈实现。
+1. **`key === ''` 不是 `workspaceId === undefined` 的等价判据。** 正文括号里那句要删掉：标题为空的真实工作区，`label` 同样是 `''`。判据只有 `workspaceId === undefined` 一条。验收里专门放了一个空标题工作区来钉死这点，它显示为「未命名工作区」而不是「未分组」。
+2. **`[class*="_rowActions"]` 会命中会话行。** 工作区行与会话行共用同一份 CSS module 的 `rowActions`，mangle 后类名完全相同；一个五行侧栏里这个选择器命中 5 个节点，2 个属于会话行。照正文的建议写选择器会直接违反「不注入会话行菜单」。改用层级判据：`[class*="_projectRow"]` + `:scope > [class*="_rowActions"]`。
+3. **不渲染成「一键归档 (N)」。** 动作条里全是 16px 图标按钮，塞一段带数字的文字会破坏这一行的排版。改成图标按钮 + tooltip 写全量，按钮直接克隆同一行「＋」的 `className`，尺寸、配色、hover 全部随宿主走，插件一条 CSS 都不写。
+4. **`sessionCount` 不等于可归档数。** 它是侧栏自己的可见数，包含当前空会话这类宿主会跳过的成员。实测一个工作区行显示 3、实际归档 2，按钮报「已归档 2 个会话；跳过 1 个（空会话不归档）」。数字来源保持 `group.sessionCount`（正文要求），差额由结果文案交代。
+
+### kill-switch
+
+累计 8 次识别落空即整体停用：移除全部已注入节点，并在 console 打**一条**说明（含 `ADAPTER_VERSION`），此后不再注入。累计而非连续——真正的改版几次扫描内就会触发，偶发的一帧异常不会。
+
+### 面板里的批量归档已删除
+
+原先的替代方案（面板按行批量归档 + 宿主 `groups` 端点）**整体移除**，`BulkActions.tsx` 删除，`groups` 端点、`ArchivableGroup`、`GroupsResult` 一并从 contract 里删掉。理由：`groups` 是宿主侧对侧栏分组的第二次重建，和侧栏真实渲染的分组是两条会各自漂移的代码路径。现在按钮长在行上，行的身份直接来自侧栏自己的 `props.group`，重建没有了。面板只保留「关闭所有运行中会话」——它没有对应的行。
+
+### 验收结果
+
+四条验收项在真实浏览器里逐条跑过（`e2e/verify.mjs`，13/13 通过）：工作区行与未分组行都出现按钮且都在「＋」之前；点击后该组会话进入归档区；未分组归空后行消失且无报错；人为把动作条挪下一层破坏识别后，注入整体停用、官方侧栏行数不变。卸载清理由 `ctx.effect` 保证，单测覆盖（`dispose` 后 DOM 回到注入前的字节。）

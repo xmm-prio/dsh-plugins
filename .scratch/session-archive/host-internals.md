@@ -1286,7 +1286,11 @@ owner 只传 `wide: boolean`（宽栏 / 56px 窄轨）。`kind: 'list'` 表示�
 lightningcss 的 mangle 形态是 **`<hash>_<local>`**，其中 `<hash>` 是**每文件一个**（同一 `Rows.module.css` 里所有 local 共用 `YDXeBa`），不是每个类各自的 hash。
 
 > **注入选择器建议**：不要写死 `YDXeBa_`（换版会变），用后缀匹配：`[class*="_rowActions"]` / `[class$="_rowActions"]`。
-> **注意 `display:none`**：`.rowActions` 默认隐藏，只在 `.projectRow:hover` 时 `inline-flex`。注入的按钮天然继承这个「悬停才显形」的行为，与 spec 意图一致。
+> **注意 `display:none`**：`.rowActions` 默认隐藏，只在 `.projectRow:hover` 或 `.menuOpen` 时 `inline-flex`。注入的按钮天然继承这个「悬停才显形」的行为，与 spec 意图一致。
+
+> ⚠️ **`rowActions` 这个 local 名被工作区行与会话行共用**（同一份 `Rows.module.css`，因此 mangle 后的类名完全相同）。实测一个五行侧栏里 `[class*="_rowActions"]` 命中 5 个节点，其中 2 个属于会话行。单靠这个选择器做注入会直接违反「不注入会话行」的约束。
+>
+> 判据是**层级而非类名**：工作区行的动作条是 `.projectRow` 的**直接子节点**，会话行的不是。所以选择器要写成 `[class*="_projectRow"]` + `:scope > [class*="_rowActions"]`。会话行的动作条 `closest('[class*="_projectRow"]')` 返回 `null`，可作为交叉验证。
 
 ### 11.2 `group` 对象的完整形状 —— **属实**
 
@@ -1411,10 +1415,47 @@ lightningcss 的 mangle 形态是 **`<hash>_<local>`**，其中 `<hash>` 是**�
 > **语义后果（重要）**：一个已归档的 session，如果仍然登记在某个 workspace 的 `sessionIds` 里，它会被 `accounted` 收走，因此**既不出现在该 workspace 组里（被 `sessionVisible` 过滤），也不会掉进 ungrouped 组**。这正是「归档即从主列表消失」能成立的机制。
 > 反过来：归档一个**不属于任何 workspace** 的 session，靠的是 `stray` 那一行的 `sessionVisible` 过滤。两条路径都覆盖到了。
 
-### 11.5 UNVERIFIED
+### 11.5 U2 / U3 —— **已实测**
 
-- **U2**：React fiber 上读 `props.group` 的运行期路径。静态产物只能给出 `ProjectRowItem({ group, onToggle, onCreate, actions, drag, home, t })` 的形参与 §11.2 的对象形状；`__reactFiber$<随机串>` 的具体 key 必须运行期从 DOM 节点上 `Object.keys(el).find(k => k.startsWith('__reactFiber$'))` 探测。
-- **U3**：把 DOM 节点直接插进 `.rowActions` 后，React 的 reconcile 是否会移除它 —— 静态产物无法判定。`.rowActions` 的 children 是静态数组（长度只随 `actions` 变），React 通常不会主动清理未知兄弟节点，但这需要实测。
+在 Chromium 153 上跑真实 DSH 0.1.5-rc.1（`packages/session-archive/e2e/`，两个真实工作区 + 未分组行，全部经 `workspaceRegistry.create` / `sessionPersistence.create` 建立）。
+
+#### U2：fiber 上到 `props.group` 的路径
+
+**key**：`Object.keys(el).find(k => k.startsWith('__reactFiber$'))`。随机后缀**每次页面加载一个**，整棵树共用同一个（本次为 `__reactFiber$bunclwesaa`，侧栏里每个节点都是它）。
+
+**落点**：`group` 挂在 `ProjectRowItem` 的 `memoizedProps` 上，字段与 §11.2 完全一致，沿 `fiber.return` 向上走即可到达。
+
+**深度不是常数**：
+
+| 起点 | 工作区行 | 未分组行 |
+|---|---|---|
+| `.rowActions` | **4** | **2** |
+| `.projectRow` | 3 | 1 |
+| 「＋」按钮 | 5 | 3 |
+
+差的这 2 层是工作区行独有的 tooltip / HoverCard 包裹层 —— 工作区行的动作条是 `span, button, button`（多一个菜单 `span`），未分组行是 `button, button`。**写死层数会在未分组行上直接失效**，必须用「向上有界搜索 + 对 `group` 做形状校验」：认 `key:string` / `sessionCount:number` / `expanded:boolean` / `label:string` / `workspaceId:string|undefined` 五个字段齐全才算命中。本插件的上限取 8。
+
+#### U3：注入节点会不会被 React 清掉
+
+**不会 —— 只要承载它的行没有 unmount。** 往三行的动作条里各插一个 `[data-probe-marker]`，随后逐项施压：
+
+| 动作 | 行数 | 存活标记 | 位置 |
+|---|---|---|---|
+| 注入后 | 3 | 3 | `span,button,MARK,button` |
+| 展开分组 | 3 | 3 | 不变 |
+| 收起分组 | 3 | 3 | 不变 |
+| 悬停 | 3 | 3 | 不变 |
+| 整组批量归档 | 3 | 3 | 不变 |
+| 点「＋」 | 3 | 3 | 不变 |
+| 未分组组整体消失 | 2 | 2 | 不变 |
+| 新工作区行插入 | 3 | 2 | 老行不变，**新行是裸的** |
+| 收成 56px 轨 | 0 | 0 | 全部 unmount |
+| 从轨展开 | 3 | **0** | 三行全裸 |
+| 视口收到 640 | 0 | 0 | 全部 unmount |
+
+全程 page console 无任何报错，React 也没有发出协调警告。
+
+**结论对实现的约束**：注入节点的存活不需要防御，**重新注入**才需要。React 只会通过「整行 unmount」间接带走它，且带走时不留残骸；一次 re-scan 只要满足幂等（认已注入的节点、认 `isConnected === false` 的陈旧记录）就够了。侧栏收成轨和视口变窄是这个路径唯一的两个高频触发点。
 
 ---
 

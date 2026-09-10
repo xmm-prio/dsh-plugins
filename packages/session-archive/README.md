@@ -9,7 +9,7 @@ DSH 自带归档，但它是单向的：会话一旦被隐藏就再也拿不回�
 - **归档区**：侧栏底部多出一个入口，打开后列出归档集合里的所有会话，带工作区归属、创建时间与日志体积。
 - **取消归档**：把会话从归档集合中移出，它回到原来的工作区和原来的位置。
 - **删除**：不可逆地移除会话日志。只有已在归档集合中的会话可以被删除——归档是删除的前置动作，用户必须先做出「隐藏它」这个决定，再做出「不要它」这个决定。
-- **批量归档**：按工作区或按未分组整行归档，跳过不该动的会话（当前会话、子代理会话）。
+- **批量归档**：内置侧栏的每个工作区行与未分组行上多出一个归档按钮，一次点击归档整行，跳过不该动的会话（当前会话、子代理会话）。
 - **全部停机**：一次性停止所有活体会话，用于收工。
 
 ## 安装
@@ -75,15 +75,19 @@ src/
     ├── index.ts             # 浏览器侧入口
     ├── transport/
     │   └── archive-api.ts   # 浏览器侧唯一处理信封的模块
-    ├── panel/
+    ├── panel/               # 归档区
+    ├── sidebar/             # 侧栏行内按钮
+    │   ├── adapter.ts       # 唯一识别内置侧栏 DOM 与 fiber 的地方，带版本号
+    │   ├── row-buttons.ts   # 注入、幂等重扫、kill-switch
+    │   └── install.ts       # 观察器与生命周期
     └── text.ts              # 全部界面文案
 ```
 
-`host/internals/` 下的三个模块各自封死一处宿主私有形状。宿主哪天改了对应实现，需要改的正好是一个文件。
+`host/internals/` 下的三个模块各自封死一处宿主私有形状，`client/sidebar/adapter.ts` 封死侧栏的 DOM 与 fiber 形状。宿主哪天改了对应实现，需要改的正好是一个文件。
 
 ## 通道
 
-八个端点走 `ctx.connection.fetch.register`，路径为 `/api/session-archive.<操作>`。它们挂在共享的 `/api` 通道上，因此宿主的 Host/Origin 围栏与 token/cookie 校验自动生效——已验证：无 cookie 返回 401，外域 Origin 返回 403。
+七个端点走 `ctx.connection.fetch.register`，路径为 `/api/session-archive.<操作>`。它们挂在共享的 `/api` 通道上，因此宿主的 Host/Origin 围栏与 token/cookie 校验自动生效——已验证：无 cookie 返回 401，外域 Origin 返回 403。
 
 不使用 `ctx.connection.rpc.handle`：该方法在 0.1.5-rc.1 上必然抛异常（它内部访问未 inject 的 `webServer`），而且异常发生在 `apply` 里，会打死整个宿主进程。也不使用 `ctx.webServer.register` 自注册路由：那样注册的路由完全绕过鉴权，而本插件能删除会话日志。
 
@@ -93,14 +97,19 @@ src/
 
 - **分叉会话与未落盘会话没有标题。** 标题来自 `sessionProjectionCache` 的检查点。宿主自己的会话列表在这两种情况下也拿不到标题，行为一致。归档区此时显示会话 id。
 - **冷会话的 `blank` 一律为假。** `blank` 同样来自投影检查点，没有检查点时宿主自己的冷路径也取 `false`。因此一个从未开始对话、又没有检查点的会话会被算作可见、可归档。这与内置会话列表的判断完全一致。
-- **不注入侧栏行内按钮。** 详见下节。
+- **侧栏行上的数字是侧栏的可见数，不是可归档数。** 数字直接取自宿主的 `group.sessionCount`，里面可能含有当前空会话这类会被跳过的成员。差额由点击后的结果文案交代（「已归档 2 个会话；跳过 1 个（空会话不归档）」），插件不在浏览器里另算一遍。
+- **归档区的列表是平铺的**，按最近活动排序，工作区归属以标签呈现，没有分组容器，也没有搜索框。
 - **删除是单个会话粒度的。** 批量删除是逐个执行，其中一个失败不影响其余，每个会话各自报告结果。
 
-## 为什么批量归档在插件自己的面板里
+## 侧栏行内按钮
 
-原计划是往侧栏每一行的 `.rowActions` 里注入一个按钮。这条路依赖两件在浏览器里才能验证的事：通过 `__reactFiber$<随机后缀>` 键找到 `props.group` 拿到工作区 id，以及 React 的协调过程是否会把外部注入的 DOM 节点清掉。开发环境没有浏览器，这两件事都无法验证，因此没有实现——宁可不做，也不发一个猜出来的东西。
+内置侧栏没有任何靠近行的扩展点：工作区行的菜单是硬编码数组，未分组行连菜单都没有。所以这一个功能是全插件唯一一处 DOM 改写与 React fiber 回溯，`client/sidebar/` 三个文件是它的全部。
 
-替代方案是在插件自己的面板里按行提供批量归档，数据来自宿主侧新增的 `groups` 端点。成员判据留在宿主上，浏览器侧只负责展示，耦合度比 DOM 注入更低。
+行的身份不靠猜，直接读侧栏自己传给行组件的 `props.group`：`workspaceId === undefined` 即未分组行，数量取 `group.sessionCount`。按钮插在该行「＋」之前，`className` 克隆同一行的「＋」，所以尺寸、配色、悬停才显形这些行为全部随宿主走——插件不写一行 CSS，也不出现任何 lightningcss 哈希。点击只把「哪一行」发给宿主，成员判据留在宿主上。
+
+识别规则集中在 `adapter.ts` 一个文件里并带版本号。**识别累计落空 8 次即整体停用**：移除全部已注入的按钮，在 console 打一条带版本号的说明，此后不再注入。宿主改版时的结果是这个功能消失，而不是官方侧栏上留下半残的东西。
+
+这条路依赖的两件事已在真实浏览器上实测（见 `.scratch/session-archive/host-internals.md` §11.5）：fiber 深度**不是常数**（工作区行 4 层、未分组行 2 层），所以用有界向上搜索加形状校验；React **不会**清掉注入的节点，只有整行 unmount（侧栏收成 56px 轨、视口收窄）会连带带走它，因此模块的重心是重扫幂等而不是抢救节点。
 
 ## 与 AGENTS.md 的两处出入
 
@@ -124,3 +133,18 @@ pnpm test
 ```bash
 dsh --profile web --patch packages/session-archive/cordis.yml --no-open
 ```
+
+### 端到端回归
+
+`e2e/` 下有一套 Playwright 回归，跑真实 DSH、真实 Chromium、真实数据：
+
+```bash
+pnpm --filter @dsh-plugins/session-archive build
+node packages/session-archive/e2e/verify.mjs        # 加 --headed 看着它跑
+```
+
+它会另起一个 DSH web 进程、从 stdout 抓一次性 token、把 `DSH_HOME` 指到临时目录，用宿主自己的 `workspaceRegistry` / `sessionPersistence` 造工作区与会话，跑完连同临时目录一起删掉——不碰你的 `~/.dsh`。需要全局装好 DSH，或用 `DSH_BIN` 指到它的 `lib/bin.js`。
+
+保留它的理由只有一条：侧栏行内按钮依赖宿主未公开的 DOM 层级与 fiber 形状，而 kill-switch 的行为是**静默停用**。没有这套回归，下一次 DSH 升级会让这个功能悄无声息地消失。单测里那份 jsdom fixture 是照真实 DOM 量出来的，也只有它能告诉你 fixture 过期了。
+
+Playwright 是**仓库根的 devDependency**，不是本包的依赖，更不是 `@deepseek-ai/*` 的兄弟包。

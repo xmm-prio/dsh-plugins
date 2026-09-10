@@ -10,8 +10,10 @@
  * dictionaries below turn into sentences.
  */
 
-import type { BulkRefusalCode, CapabilityBlockCode, FailureCode } from '../contract.js'
+import type { BulkArchiveResult, BulkRefusalCode, CapabilityBlockCode, FailureCode } from '../contract.js'
 import type { ArchiveSkipReason } from '../domain/grouping.js'
+import type { RowButtonCopy } from './sidebar/row-buttons.js'
+import type { RowGroup } from './sidebar/adapter.js'
 
 export const text = {
   /** Sidebar footer entry and the panel it opens. */
@@ -22,6 +24,7 @@ export const text = {
 
   /** Row-level chrome. */
   untitled: '未命名会话',
+  untitledWorkspace: '未命名工作区',
   ungrouped: '未分组',
   workspaceColumn: '原工作区',
   createdAt: '创建于',
@@ -36,7 +39,7 @@ export const text = {
   clearSelection: '取消选择',
   refresh: '刷新',
   shutdownAll: '关闭所有运行中会话',
-  archiveWorkspaceAll: '全部归档',
+  archiving: '正在归档…',
 
   /** Empty, loading, and failure states. */
   loading: '正在读取归档区…',
@@ -72,6 +75,31 @@ export const text = {
 /** Delete-confirmation body text, which names exactly what is about to happen. */
 export function deleteDescription(count: number): string {
   return `即将永久删除 ${String(count)} 个会话的日志文件。这些会话会先被停止，随后从归档区和原工作区一并移除。此操作不可撤销。`
+}
+
+/** How a sidebar row names itself in the injected button's tooltip. */
+function rowName(group: RowGroup): string {
+  if (group.workspaceId === undefined) return text.ungrouped
+  return group.label.length > 0 ? group.label : text.untitledWorkspace
+}
+
+/** Prose for the bulk-archive button injected into each sidebar row. */
+export const rowCopy: RowButtonCopy = {
+  action: (group) => `归档「${rowName(group)}」中的 ${String(group.sessionCount)} 个会话`,
+  empty: (group) => `「${rowName(group)}」没有可归档的会话`,
+  busy: text.archiving,
+}
+
+/** Render one bulk-archive result as a single line. */
+export function bulkArchiveSummary(result: BulkArchiveResult): string {
+  if (result.refusal !== undefined) return refusalText(result.refusal.code)
+  if (result.archived.length === 0 && result.failed.length === 0) return text.nothingToArchive
+  const reasons = [...new Set(result.skipped.map((skip) => skipText(skip.reason)))].join('、')
+  return [
+    text.archivedCount(result.archived.length),
+    ...(result.skipped.length > 0 ? [`${text.skippedCount(result.skipped.length)}（${reasons}）`] : []),
+    ...result.failed.map((outcome) => `${outcome.id}: ${failureText(outcome.code)}`),
+  ].join('；')
 }
 
 /** Why one session-scoped operation failed. */

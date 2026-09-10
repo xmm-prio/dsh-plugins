@@ -12,7 +12,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ArchivedSessionEntry, CapabilityId, OperationOutcome } from '../../contract.js'
 import { blockText, deleteDescription, failureText, relativeText, text } from '../text.js'
 import { createArchiveApi } from '../transport/archive-api.js'
-import { BulkActions } from './BulkActions.js'
+import { ShutdownAll } from './ShutdownAll.js'
 import { useArchive } from './useArchive.js'
 import type { ArchiveState } from './useArchive.js'
 
@@ -21,6 +21,16 @@ export interface FooterActionProps {
   /** Whether the sidebar is expanded; collapsed rows show the icon only. */
   readonly wide?: boolean
 }
+
+/**
+ * The archive list scrolls inside its own box.
+ *
+ * The host's `Modal` is a fixed-size card — `overflow: hidden`, no maximum
+ * height — sized for confirmation dialogs. Content taller than the viewport
+ * does not scroll, it is simply out of reach, so a list that can hold hundreds
+ * of rows has to bound itself rather than expect the card to.
+ */
+const LIST_VIEWPORT = { maxHeight: '46vh', overflowY: 'auto' } as const
 
 /** The prose the archive-area hook composes its reports out of. */
 const copy = {
@@ -93,13 +103,7 @@ function ArchiveBody({ state }: { state: ArchiveState }): JSX.Element {
     <div>
       <CapabilityNotices state={state} />
 
-      <BulkActions
-        api={state.api}
-        open
-        canArchive={available(state, 'archive')}
-        canShutdown={available(state, 'shutdown')}
-        onChanged={state.reload}
-      />
+      <ShutdownAll api={state.api} enabled={available(state, 'shutdown')} />
 
       {entries.length === 0 ? (
         <p>{text.empty}</p>
@@ -119,7 +123,7 @@ function ArchiveBody({ state }: { state: ArchiveState }): JSX.Element {
             <span>{text.totalSize(fileSizeText(state.listing?.totalSizeBytes ?? 0))}</span>
           </div>
 
-          <ul>
+          <ul style={LIST_VIEWPORT}>
             {entries.map((entry) => (
               <ArchiveRow
                 key={entry.id}
