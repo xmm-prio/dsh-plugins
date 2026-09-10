@@ -10,8 +10,15 @@
  * dictionaries below turn into sentences.
  */
 
-import type { BulkArchiveResult, BulkRefusalCode, CapabilityBlockCode, FailureCode } from '../contract.js'
-import type { ArchiveSkipReason } from '../domain/grouping.js'
+import type {
+  ArchiveSkipReason,
+  BulkArchiveResult,
+  BulkRefusalCode,
+  CapabilityBlockCode,
+  FailureCode,
+  TransportFailureCode,
+} from '../contract.js'
+import type { CallOutcome } from './transport/archive-api.js'
 import type { RowButtonCopy } from './sidebar/row-buttons.js'
 import type { RowGroup } from './sidebar/adapter.js'
 
@@ -22,8 +29,7 @@ export const text = {
   panelDescription: '已归档的会话不在侧栏显示。取消归档即可让它重新出现，删除会永久移除它的日志。',
   close: '关闭',
 
-  /** Row-level chrome. */
-  untitled: '未命名会话',
+  /** Row-level chrome. A session with no resolvable title falls back to its id. */
   untitledWorkspace: '未命名工作区',
   ungrouped: '未分组',
   workspaceColumn: '原工作区',
@@ -31,6 +37,10 @@ export const text = {
   lastActivityAt: '最近活动',
   size: '日志大小',
   unknownSize: '未知',
+
+  /** Title search. */
+  searchPlaceholder: '按标题搜索',
+  noMatch: '没有匹配的会话。',
 
   /** Actions. */
   unarchive: '取消归档',
@@ -61,6 +71,8 @@ export const text = {
   /** Summaries. */
   selectedCount: (n: number) => `已选择 ${String(n)} 个`,
   totalSize: (size: string) => `共 ${size}`,
+  hiddenBySearch: (n: number) => `${String(n)} 个未匹配已隐藏`,
+  groupSummary: (n: number, size: string) => `${String(n)} 个会话 · ${size}`,
   archivedCount: (n: number) => `已归档 ${String(n)} 个会话`,
   unarchivedCount: (n: number) => `已取消归档 ${String(n)} 个会话`,
   deletedCount: (n: number) => `已删除 ${String(n)} 个会话的日志`,
@@ -102,7 +114,17 @@ export function bulkArchiveSummary(result: BulkArchiveResult): string {
   ].join('；')
 }
 
-/** Why one session-scoped operation failed. */
+/**
+ * Why one session-scoped operation failed.
+ *
+ * Two groups need to say more than "it failed". The `ownership-*` codes are
+ * the refusals that guard a path this plugin composed itself, so each names
+ * the expectation that broke — a user who sees them should be able to tell a
+ * mis-derived path from a directory that was never a session log. The last
+ * two report a delete that already removed the log: naming what did *not*
+ * happen afterwards is the difference between a retry that helps and one that
+ * looks for a file that is already gone.
+ */
 const FAILURE_TEXT: Readonly<Record<FailureCode, string>> = {
   'capability-disabled': '该能力在当前 DSH 版本上不可用',
   'invalid-session-id': '会话 id 不合法',
@@ -111,15 +133,43 @@ const FAILURE_TEXT: Readonly<Record<FailureCode, string>> = {
   'unknown-session': '宿主找不到这个会话',
   'teardown-effect-missing': '无法确认会话已停止，已放弃操作',
   'write-lease-held': '会话的写句柄仍被占用',
-  'legacy-log-format': '日志使用较旧的格式版本，后端不提供其路径',
+  'log-root-unknown': '无法确定会话日志根目录，旧格式日志无法定位',
+  'legacy-log-not-found': '后端不提供该会话的日志路径，日志根目录下也没有对应目录',
   'log-path-refused': '日志路径未通过安全校验',
+  'ownership-basename-mismatch': '推导出的目录名与会话 id 不一致，已放弃删除',
+  'ownership-generation-missing': '推导出的目录里没有会话日志文件，已放弃删除',
+  'ownership-outside-root': '推导出的目录不在会话日志根目录之内，已放弃删除',
+  'ownership-unsafe-root': '推导出的目录形状不安全，已放弃删除',
   'remove-failed': '删除文件失败',
+  'ledger-detach-failed': '日志已删除，但会话未能从原工作区移除；它仍留在归档区，可重试删除',
+  'archive-set-stale': '日志已删除、会话也已脱离工作区，但归档区未更新；刷新后重试删除',
   'host-error': '宿主返回了未预期的错误',
 }
 
 /** Turn a failure code into a sentence. */
 export function failureText(code: FailureCode): string {
   return FAILURE_TEXT[code] ?? code
+}
+
+/**
+ * Why a call never produced a host answer.
+ *
+ * These four are the transport's own codes, not a host verdict, and they used
+ * to reach the user as the raw code string. They are dictionary entries like
+ * everything else; the underlying message follows in parentheses because it is
+ * the only part that says *which* route or *which* profile was at fault.
+ */
+const TRANSPORT_TEXT: Readonly<Record<TransportFailureCode, string>> = {
+  'session-archive/bad-request': '请求不被宿主接受',
+  'session-archive/handler-failed': '宿主处理请求时出错',
+  'session-archive/no-connection': '当前 profile 没有加载连接服务',
+  'session-archive/transport': '与宿主通信失败',
+}
+
+/** Turn a failed call into a sentence. */
+export function callFailureText(outcome: Extract<CallOutcome<unknown>, { ok: false }>): string {
+  const reason = TRANSPORT_TEXT[outcome.code] ?? outcome.code
+  return outcome.message.length > 0 ? `${reason}（${outcome.message}）` : reason
 }
 
 /** Why a whole bulk archive was refused. */
@@ -137,12 +187,12 @@ export function refusalText(code: BulkRefusalCode): string {
 const BLOCK_TEXT: Readonly<Record<CapabilityBlockCode, string>> = {
   'workspace-registry-unavailable': '工作区注册表不可用',
   'archive-api-missing': '宿主的归档接口已改变',
-  'enqueue-operation-missing': '宿主的写入队列已改变',
-  'registry-state-missing': '宿主的注册表状态已改变',
+  'private-write-path-missing': '宿主的归档集合写入通路已改变',
   'workspace-domain-unavailable': '工作区存储域未打开',
   'fiber-scan-unavailable': '无法遍历 Cordis 的插件树',
   'persistence-backend-unsupported': '当前持久化后端不支持删除',
   'log-resolver-missing': '后端不再提供日志路径',
+  'log-root-unknown': '无法确定会话日志根目录',
   'projection-cache-unavailable': '会话投影缓存不可用',
   'session-list-unavailable': '无法读取会话列表',
   'probe-failed': '能力探测本身失败',

@@ -11,7 +11,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { RowGroup } from './adapter.js'
 import { createRowButtons } from './row-buttons.js'
 import type { RowButtons } from './row-buttons.js'
-import { blockText, bulkArchiveSummary, rowCopy } from '../text.js'
+import { blockText, bulkArchiveSummary, callFailureText, rowCopy } from '../text.js'
 import type { ArchiveApi } from '../transport/archive-api.js'
 
 /**
@@ -56,7 +56,7 @@ export function installSidebarButtons(ctx: Context, api: ArchiveApi): void {
             group.workspaceId === undefined
               ? await api.archiveUngrouped({})
               : await api.archiveWorkspace({ workspaceId: group.workspaceId })
-          return outcome.ok ? bulkArchiveSummary(outcome.value) : `${outcome.code}: ${outcome.message}`
+          return outcome.ok ? bulkArchiveSummary(outcome.value) : callFailureText(outcome)
         },
         blocked,
         copy: rowCopy,

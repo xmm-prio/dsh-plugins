@@ -12,7 +12,7 @@
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useCallback, useState } from 'react'
 
-import { text } from '../text.js'
+import { callFailureText, text } from '../text.js'
 import type { ArchiveApi } from '../transport/archive-api.js'
 
 /** The shutdown-all action and the line it reports into. */
@@ -26,7 +26,7 @@ export function ShutdownAll({ api, enabled }: { api: ArchiveApi; enabled: boolea
     const outcome = await api.shutdownAll({})
     setBusy(false)
     if (!outcome.ok) {
-      setMessage(`${outcome.code}: ${outcome.message}`)
+      setMessage(callFailureText(outcome))
       return
     }
     const failures = outcome.value.outcomes.filter((item) => !item.ok)

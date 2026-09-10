@@ -29,22 +29,26 @@ export interface ArchiveState {
   readonly busy: boolean
   readonly report: OperationReport | undefined
   toggle(id: string): void
-  selectAll(): void
+  /**
+   * Select exactly these ids, on top of whatever is already selected.
+   *
+   * The caller says what "all" means, because only the caller knows whether a
+   * search box is narrowing the list — and a select-all that reached rows the
+   * user cannot see would aim a delete at them.
+   */
+  selectAll(ids: readonly string[]): void
   clearSelection(): void
   reload(): void
   unarchive(): Promise<void>
   remove(): Promise<void>
 }
 
-/** Describe a whole-call failure in one line. */
-function callFailure(outcome: Extract<CallOutcome<unknown>, { ok: false }>): string {
-  return `${outcome.code}: ${outcome.message}`
-}
-
 /** The prose this hook needs; supplied by the caller so no strings live here. */
 export interface ArchiveCopy {
   /** Renders one per-session failure. */
   describe(outcome: Extract<OperationOutcome, { ok: false }>): string
+  /** Renders a failure that stopped the call before the host answered. */
+  transport(outcome: Extract<CallOutcome<unknown>, { ok: false }>): string
   /** Renders "n sessions unarchived". */
   unarchived(count: number): string
   /** Renders "n sessions deleted". */
@@ -59,7 +63,7 @@ export interface ArchiveCopy {
  * @returns the panel's complete state and actions.
  */
 export function useArchive(api: ArchiveApi, open: boolean, copy: ArchiveCopy): ArchiveState {
-  const { describe, unarchived: unarchivedText, deleted: deletedText } = copy
+  const { describe, transport, unarchived: unarchivedText, deleted: deletedText } = copy
   const [loading, setLoading] = useState(false)
   const [listing, setListing] = useState<ArchiveListResult | undefined>(undefined)
   const [capabilities, setCapabilities] = useState<CapabilitiesResult | undefined>(undefined)
@@ -92,14 +96,14 @@ export function useArchive(api: ArchiveApi, open: boolean, copy: ArchiveCopy): A
         const present = new Set(list.value.entries.map((entry) => entry.id))
         setSelected((current) => new Set([...current].filter((id) => present.has(id))))
       } else {
-        setLoadError(callFailure(list))
+        setLoadError(transport(list))
       }
       setLoading(false)
     })()
     return () => {
       controller.abort()
     }
-  }, [api, open, generation])
+  }, [api, open, generation, transport])
 
   useEffect(() => {
     if (open) return
@@ -115,9 +119,9 @@ export function useArchive(api: ArchiveApi, open: boolean, copy: ArchiveCopy): A
     })
   }, [])
 
-  const selectAll = useCallback(() => {
-    setSelected(new Set((listing?.entries ?? []).map((entry) => entry.id)))
-  }, [listing])
+  const selectAll = useCallback((ids: readonly string[]) => {
+    setSelected((current) => new Set([...current, ...ids]))
+  }, [])
 
   const clearSelection = useCallback(() => {
     setSelected(new Set())
@@ -134,7 +138,7 @@ export function useArchive(api: ArchiveApi, open: boolean, copy: ArchiveCopy): A
       const outcome = await operation(ids)
       setBusy(false)
       if (!outcome.ok) {
-        setReport({ kind: 'failed', message: callFailure(outcome), failures: [] })
+        setReport({ kind: 'failed', message: transport(outcome), failures: [] })
         return
       }
       const failures = outcome.value.outcomes.filter(
@@ -150,7 +154,7 @@ export function useArchive(api: ArchiveApi, open: boolean, copy: ArchiveCopy): A
       // authority on what is archived, and a delete also changes workspaces.
       reload()
     },
-    [busy, describe, reload, selected],
+    [busy, describe, reload, selected, transport],
   )
 
   const unarchive = useCallback(async () => {

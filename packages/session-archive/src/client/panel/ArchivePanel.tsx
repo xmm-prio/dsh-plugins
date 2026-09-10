@@ -10,7 +10,9 @@ import { useCallback, useMemo, useState } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 
 import type { ArchivedSessionEntry, CapabilityId, OperationOutcome } from '../../contract.js'
-import { blockText, deleteDescription, failureText, relativeText, text } from '../text.js'
+import { buildArchiveView, entryLabel } from '../../domain/archive-view.js'
+import type { ArchiveViewGroup } from '../../domain/archive-view.js'
+import { blockText, callFailureText, deleteDescription, failureText, relativeText, text } from '../text.js'
 import { createArchiveApi } from '../transport/archive-api.js'
 import { ShutdownAll } from './ShutdownAll.js'
 import { useArchive } from './useArchive.js'
@@ -35,6 +37,7 @@ const LIST_VIEWPORT = { maxHeight: '46vh', overflowY: 'auto' } as const
 /** The prose the archive-area hook composes its reports out of. */
 const copy = {
   describe: (outcome: Extract<OperationOutcome, { ok: false }>) => `${outcome.id}: ${failureText(outcome.code)}`,
+  transport: callFailureText,
   unarchived: (count: number) => text.unarchivedCount(count),
   deleted: (count: number) => text.deletedCount(count),
 }
@@ -69,7 +72,11 @@ export function createArchivePanel(ctx: Context): (props: FooterActionProps) => 
 function ArchiveBody({ state }: { state: ArchiveState }): JSX.Element {
   const [confirming, setConfirming] = useState(false)
   const [acknowledged, setAcknowledged] = useState(false)
+  const [query, setQuery] = useState('')
   const now = useMemo(() => Date.now(), [state.listing])
+  const entries = state.listing?.entries ?? []
+  const view = useMemo(() => buildArchiveView(entries, query), [entries, query])
+  const shown = useMemo(() => view.groups.flatMap((group) => group.entries.map((entry) => entry.id)), [view])
 
   const closeConfirmation = useCallback(() => {
     setConfirming(false)
@@ -96,7 +103,6 @@ function ArchiveBody({ state }: { state: ArchiveState }): JSX.Element {
     )
   }
 
-  const entries = state.listing?.entries ?? []
   const selectedCount = state.selected.size
 
   return (
@@ -110,7 +116,14 @@ function ArchiveBody({ state }: { state: ArchiveState }): JSX.Element {
       ) : (
         <>
           <div>
-            <Button variant="ghost" size="sm" onClick={state.selectAll}>
+            <input
+              type="search"
+              value={query}
+              placeholder={text.searchPlaceholder}
+              aria-label={text.searchPlaceholder}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            <Button variant="ghost" size="sm" onClick={() => state.selectAll(shown)} disabled={shown.length === 0}>
               {text.selectAll}
             </Button>
             <Button variant="ghost" size="sm" onClick={state.clearSelection} disabled={selectedCount === 0}>
@@ -121,19 +134,24 @@ function ArchiveBody({ state }: { state: ArchiveState }): JSX.Element {
             </Button>
             <span>{text.selectedCount(selectedCount)}</span>
             <span>{text.totalSize(fileSizeText(state.listing?.totalSizeBytes ?? 0))}</span>
+            {view.hidden === 0 ? null : <span>{text.hiddenBySearch(view.hidden)}</span>}
           </div>
 
-          <ul style={LIST_VIEWPORT}>
-            {entries.map((entry) => (
-              <ArchiveRow
-                key={entry.id}
-                entry={entry}
-                now={now}
-                selected={state.selected.has(entry.id)}
-                onToggle={() => state.toggle(entry.id)}
-              />
-            ))}
-          </ul>
+          {view.groups.length === 0 ? (
+            <p>{text.noMatch}</p>
+          ) : (
+            <div style={LIST_VIEWPORT}>
+              {view.groups.map((group) => (
+                <ArchiveGroup
+                  key={group.workspaceId ?? ''}
+                  group={group}
+                  now={now}
+                  selected={state.selected}
+                  onToggle={state.toggle}
+                />
+              ))}
+            </div>
+          )}
 
           <div>
             <Button
@@ -178,6 +196,45 @@ function ArchiveBody({ state }: { state: ArchiveState }): JSX.Element {
   )
 }
 
+/** One original workspace, with its archived sessions under it. */
+function ArchiveGroup({
+  group,
+  now,
+  selected,
+  onToggle,
+}: {
+  group: ArchiveViewGroup
+  now: number
+  selected: ReadonlySet<string>
+  onToggle: (id: string) => void
+}): JSX.Element {
+  const label =
+    group.workspaceId === undefined
+      ? text.ungrouped
+      : group.title !== undefined && group.title.length > 0
+        ? group.title
+        : text.untitledWorkspace
+  return (
+    <section>
+      <header>
+        <Tag tone={group.workspaceId === undefined ? 'quiet' : 'outline'}>{label}</Tag>
+        <span>{text.groupSummary(group.entries.length, fileSizeText(group.sizeBytes))}</span>
+      </header>
+      <ul>
+        {group.entries.map((entry) => (
+          <ArchiveRow
+            key={entry.id}
+            entry={entry}
+            now={now}
+            selected={selected.has(entry.id)}
+            onToggle={() => onToggle(entry.id)}
+          />
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 function ArchiveRow({
   entry,
   now,
@@ -194,12 +251,14 @@ function ArchiveRow({
     <li>
       <label>
         <input type="checkbox" checked={selected} onChange={onToggle} />
-        <span>{entry.title ?? text.untitled}</span>
+        <span>{entryLabel(entry)}</span>
       </label>
-      <Tag tone={entry.workspaceId === undefined ? 'quiet' : 'outline'}>
-        {entry.workspaceTitle ?? text.ungrouped}
-      </Tag>
-      <span title={new Date(activity).toLocaleString()}>{relativeText(relativeTime(activity, now))}</span>
+      <span title={new Date(entry.createdAt).toLocaleString()}>
+        {text.createdAt} {relativeText(relativeTime(entry.createdAt, now))}
+      </span>
+      <span title={new Date(activity).toLocaleString()}>
+        {text.lastActivityAt} {relativeText(relativeTime(activity, now))}
+      </span>
       <span>{entry.sizeBytes === undefined ? text.unknownSize : fileSizeText(entry.sizeBytes)}</span>
       {entry.cwd === undefined ? null : <span title={entry.cwd}>{entry.cwd}</span>}
     </li>
