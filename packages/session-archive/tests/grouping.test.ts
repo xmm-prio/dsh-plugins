@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { groupSessions, planBulkArchive, sessionVisible } from '../src/domain/grouping.js'
+import { NO_SELECTION, groupSessions, planBulkArchive, sessionVisible } from '../src/domain/grouping.js'
 import type { SessionListEntry, WorkspaceLedger } from '../src/domain/grouping.js'
 
 function session(id: string, extra: Partial<SessionListEntry> = {}): SessionListEntry {
@@ -148,6 +148,32 @@ describe('planBulkArchive', () => {
     const plan = planBulkArchive({ ...base, scope: { kind: 'workspace', workspaceId: 'nope' } })
     expect(plan.unknownScope).toBe(true)
     expect(plan.targets).toEqual([])
+  })
+
+  it('produces the same plan whatever the selection is', () => {
+    // The host half cannot learn the browser's selection, so the plan must not
+    // depend on it. This is the property that makes NO_SELECTION honest rather
+    // than a silent gap: every session, and no session, must plan alike.
+    const scopes = [{ kind: 'workspace', workspaceId: 'w1' }, { kind: 'ungrouped' }] as const
+    for (const scope of scopes) {
+      const reference = planBulkArchive({ ...base, current: NO_SELECTION, scope })
+      for (const current of [...base.sessions.map((entry) => entry.id), 'nobody']) {
+        expect(planBulkArchive({ ...base, current, scope })).toEqual(reference)
+      }
+    }
+  })
+
+  it('still reflects the selection in the grouping it is built on', () => {
+    // Not a contradiction of the test above: the sidebar really does show the
+    // selected blank row, and `groupSessions` says so. Bulk archive reads
+    // `accounted`, which the selection never touches, so the two can differ
+    // without either being wrong.
+    const input = { ...base, current: 'blank' }
+    expect(groupSessions(input).workspaces[0]?.visible).toContain('blank')
+    expect(groupSessions({ ...base, current: NO_SELECTION }).workspaces[0]?.visible).not.toContain('blank')
+    expect(groupSessions(input).workspaces[0]?.accounted).toEqual(
+      groupSessions({ ...base, current: NO_SELECTION }).workspaces[0]?.accounted,
+    )
   })
 
   it('classifies an archived subagent stray under its first matching reason', () => {

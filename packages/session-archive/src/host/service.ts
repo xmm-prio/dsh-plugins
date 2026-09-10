@@ -17,7 +17,7 @@ import type {
   CapabilityReport,
   OperationFailure,
 } from '../contract.js'
-import { planBulkArchive } from '../domain/grouping.js'
+import { NO_SELECTION, planBulkArchive } from '../domain/grouping.js'
 import type { BulkArchiveScope, GroupingInput, SessionListEntry } from '../domain/grouping.js'
 import type { AgentTeardown } from './agent-teardown.js'
 import type { ArchiveWriter } from './archive-writer.js'
@@ -164,9 +164,9 @@ export class SessionArchiveService {
         sessionIds: workspace.sessionIds,
       })),
       archived: new Set(this.deps.archive.archived()),
-      // The host has no notion of which session the browser has selected, and
-      // it does not need one: every blank session is skipped either way.
-      current: undefined,
+      // Not an omission: the selected session is browser state that no host
+      // surface publishes, and bulk archive withholds it on purpose anyway.
+      current: NO_SELECTION,
     }
   }
 

@@ -25,22 +25,33 @@ export function endpointPath(operation: keyof EndpointMap): string {
 
 // ---------------------------------------------------------------- capabilities
 
-/** One thing this plugin can do, subject to the host exposing the shapes it needs. */
-export type CapabilityId = 'archive' | 'unarchive' | 'delete' | 'shutdown' | 'metadata'
+/**
+ * One thing this plugin can do, subject to the host exposing the shapes it needs.
+ *
+ * `deleteLegacy` is separate from `delete` because it stands on one extra
+ * thing: a known session log root. A log the backend still addresses is
+ * deletable without it, a pre-migration one is not.
+ */
+export type CapabilityId = 'archive' | 'unarchive' | 'delete' | 'deleteLegacy' | 'shutdown' | 'metadata'
 
 /**
  * Why a capability is off. Stable machine codes: the host half never composes
  * user-facing prose, the browser half renders it.
+ *
+ * A code names the *capability* that is missing, never the host member that
+ * carries it — a private member is free to be renamed upstream, and this
+ * plugin promises that such a rename touches one file. The member name travels
+ * as free text in {@link CapabilityStatus.subject} instead.
  */
 export type CapabilityBlockCode =
   | 'workspace-registry-unavailable'
   | 'archive-api-missing'
-  | 'enqueue-operation-missing'
-  | 'registry-state-missing'
+  | 'private-write-path-missing'
   | 'workspace-domain-unavailable'
   | 'fiber-scan-unavailable'
   | 'persistence-backend-unsupported'
   | 'log-resolver-missing'
+  | 'log-root-unknown'
   | 'projection-cache-unavailable'
   | 'session-list-unavailable'
   | 'probe-failed'
@@ -50,7 +61,12 @@ export interface CapabilityStatus {
   readonly available: boolean
   /** Present exactly when `available` is false. */
   readonly code?: CapabilityBlockCode
-  /** The host shape, service, or backend the probe found wanting. */
+  /**
+   * Free text naming the exact host shape, service, member, or backend the
+   * probe found wanting. The one place a host-private member name is allowed
+   * to appear, and the reason a blocked capability can still say "宿主的 X
+   * 不可用" without X being part of the code vocabulary.
+   */
   readonly subject?: string
 }
 
@@ -96,6 +112,26 @@ export interface ArchiveListResult {
 
 // ------------------------------------------------------------------ operations
 
+/**
+ * The four ownership proofs a *self-derived* log directory must pass before it
+ * is removed, expressed as the failure each one reports.
+ *
+ * A derived path is one this plugin composed because the backend refused to
+ * name it, so nothing but these proofs stands between an irreversible `rm` and
+ * a directory that was never this session's. All four are required; the first
+ * that fails aborts the delete and is reported as-is, and nothing partial ever
+ * happens.
+ */
+export type OwnershipFailureCode =
+  /** The directory's name is not exactly the session id (`abc` never matches `abcdef`). */
+  | 'ownership-basename-mismatch'
+  /** The directory holds no `session.vN.jsonl[.zstd]`, so it is not a session log directory. */
+  | 'ownership-generation-missing'
+  /** The resolved absolute path does not sit under the session log root. */
+  | 'ownership-outside-root'
+  /** The path is relative, a volume root, or too shallow to be a session directory. */
+  | 'ownership-unsafe-root'
+
 /** Why one per-session operation did not succeed. */
 export type FailureCode =
   | 'capability-disabled'
@@ -105,9 +141,15 @@ export type FailureCode =
   | 'unknown-session'
   | 'teardown-effect-missing'
   | 'write-lease-held'
-  | 'legacy-log-format'
+  | 'log-root-unknown'
+  | 'legacy-log-not-found'
   | 'log-path-refused'
+  | OwnershipFailureCode
   | 'remove-failed'
+  /** The log is gone but the session is still registered in a workspace ledger. */
+  | 'ledger-detach-failed'
+  /** The log is gone and the ledgers are clean, but the id is still in the archive set. */
+  | 'archive-set-stale'
   | 'host-error'
 
 /** One session-scoped operation that did not succeed. */
@@ -140,6 +182,35 @@ export interface BulkArchiveResult {
   /** Present when the action was refused as a whole; the other fields are then empty. */
   readonly refusal?: { readonly code: BulkRefusalCode; readonly detail: string }
 }
+
+// ------------------------------------------------------------------ transport
+
+/**
+ * Failures that happen around an endpoint rather than inside one.
+ *
+ * These never come out of {@link OperationOutcome}: they are raised by the two
+ * transport modules when a call does not reach a handler, or when a handler
+ * fails in a way it did not describe itself. They belong here for the same
+ * reason every other code does — the browser half renders prose for a code it
+ * knows, and a code it does not know can only be printed raw.
+ */
+export type TransportFailureCode =
+  /** The request was not a well-formed envelope for this endpoint. */
+  | 'session-archive/bad-request'
+  /** The handler threw. The message is the host's, not a composed sentence. */
+  | 'session-archive/handler-failed'
+  /** This profile does not mount `connection`, so there is nothing to call. */
+  | 'session-archive/no-connection'
+  /** The call never reached the handler: network, status, or envelope shape. */
+  | 'session-archive/transport'
+
+/** The transport failure codes, addressable by name from both halves. */
+export const TRANSPORT_FAILURE = {
+  badRequest: 'session-archive/bad-request',
+  handlerFailed: 'session-archive/handler-failed',
+  noConnection: 'session-archive/no-connection',
+  transport: 'session-archive/transport',
+} as const satisfies Readonly<Record<string, TransportFailureCode>>
 
 // ------------------------------------------------------------------ endpoints
 

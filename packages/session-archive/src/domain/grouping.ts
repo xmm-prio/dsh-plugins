@@ -8,6 +8,8 @@
  * which is what keeps an archived ledger member out of ungrouped.
  */
 
+import type { ArchiveSkipReason } from '../contract.js'
+
 /** The facts about a session that grouping needs; a projection of the host's list row. */
 export interface SessionListEntry {
   readonly id: string
@@ -28,9 +30,32 @@ export interface GroupingInput {
   readonly sessions: readonly SessionListEntry[]
   readonly workspaces: readonly WorkspaceLedger[]
   readonly archived: ReadonlySet<string>
-  /** The session currently selected in the UI, whose blank row stays visible. */
+  /**
+   * The session currently selected in the UI, whose blank row stays visible.
+   *
+   * The host half always passes {@link NO_SELECTION}. The selection is not a
+   * host fact: it lives in the browser's `ClientSessions` as a private,
+   * per-connection persisted cell projected onto `list.current`, no host RPC
+   * carries it, and two attached browsers can hold different values. Bulk
+   * archive is unaffected — see {@link NO_SELECTION}.
+   */
   readonly current: string | undefined
 }
+
+/**
+ * The selection to evaluate the sidebar's predicate against when there is none.
+ *
+ * Two callers pass this deliberately rather than by omission:
+ *
+ * - the host half, because it cannot know the browser's selection at all;
+ * - {@link planBulkArchive}, because the spec skips blank sessions
+ *   *unconditionally* — including the selected one, which is the "new session"
+ *   row DSH just opened and the one row a user would not want hidden.
+ *
+ * Withholding the selection is therefore the mechanism that implements the
+ * second rule, not an approximation of the first.
+ */
+export const NO_SELECTION: string | undefined = undefined
 
 /** One row of the grouped view: what belongs to it, and what of that is on screen. */
 export interface SessionGroup {
@@ -52,6 +77,30 @@ export interface SessionGrouping {
 }
 
 /**
+ * Why the built-in sidebar keeps a session off screen, if it does.
+ *
+ * The three conjuncts of `dsh-client-ui-workspace`'s `sessionVisible`, written
+ * once as a reason ladder so that "is it on screen" and "why was it not
+ * archived" can never drift apart: they are the same three questions, and the
+ * second is only the first with the answer kept.
+ *
+ * @param entry - the session row.
+ * @param current - the selected session id, whose blank row stays on screen.
+ * @param archived - the archive set.
+ * @returns the reason it is hidden, or undefined when the sidebar renders it.
+ */
+function hiddenReason(
+  entry: SessionListEntry,
+  current: string | undefined,
+  archived: ReadonlySet<string>,
+): ArchiveSkipReason | undefined {
+  if (entry.origin === 'subagent') return 'subagent'
+  if (archived.has(entry.id)) return 'already-archived'
+  if (entry.blank && entry.id !== current) return 'blank'
+  return undefined
+}
+
+/**
  * The built-in sidebar's visibility predicate.
  * @param entry - the session row.
  * @param current - the selected session id, whose blank row stays on screen.
@@ -63,7 +112,7 @@ export function sessionVisible(
   current: string | undefined,
   archived: ReadonlySet<string>,
 ): boolean {
-  return entry.origin !== 'subagent' && !archived.has(entry.id) && (!entry.blank || entry.id === current)
+  return hiddenReason(entry, current, archived) === undefined
 }
 
 /**
@@ -102,9 +151,6 @@ export function groupSessions(input: GroupingInput): SessionGrouping {
 /** Which display row a bulk archive covers. */
 export type BulkArchiveScope = { readonly kind: 'workspace'; readonly workspaceId: string } | { readonly kind: 'ungrouped' }
 
-/** Why a member of the scope is not archived. */
-export type ArchiveSkipReason = 'subagent' | 'already-archived' | 'blank'
-
 /** One skipped member and the reason it was left alone. */
 export interface ArchiveSkip {
   readonly id: string
@@ -120,23 +166,14 @@ export interface BulkArchivePlan {
 }
 
 /**
- * Why the archive writer must leave a session alone, if it must.
- *
- * Blank sessions are skipped unconditionally, including the selected blank row
- * that {@link sessionVisible} keeps on screen. Archiving is a visibility
- * decision, and a blank session is either already off screen — in which case
- * archiving it changes nothing a user can see — or it is the empty session DSH
- * just opened for them, which is the one row they would not want hidden.
- */
-function skipReason(entry: SessionListEntry, archived: ReadonlySet<string>): ArchiveSkipReason | undefined {
-  if (entry.origin === 'subagent') return 'subagent'
-  if (archived.has(entry.id)) return 'already-archived'
-  if (entry.blank) return 'blank'
-  return undefined
-}
-
-/**
  * Select the sessions a "archive everything in this row" action should archive.
+ *
+ * The plan is the sidebar's own hidden-reason ladder run over the row's
+ * accounted members with the selection withheld ({@link NO_SELECTION}), which
+ * is what makes the selected blank row skip like any other blank row.
+ * `input.current` is therefore deliberately not consulted here, and a test
+ * pins that the plan is identical with and without it.
+ *
  * @param input - grouping input plus the display row to act on.
  * @returns the archive targets in ledger order and the classified skips.
  */
@@ -158,7 +195,7 @@ export function planBulkArchive(input: GroupingInput & { readonly scope: BulkArc
   for (const id of members) {
     const entry = byId.get(id)
     if (entry === undefined) continue
-    const reason = skipReason(entry, input.archived)
+    const reason = hiddenReason(entry, NO_SELECTION, input.archived)
     if (reason === undefined) targets.push(id)
     else skipped.push({ id, reason })
   }
