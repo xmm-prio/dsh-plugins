@@ -90,7 +90,14 @@ footer: { js: 'return module.exports; } });' },
 
 ### 配置
 
-只有一项：`sessionRoot`，会话日志根目录。它是纯 escape hatch——正常路径下由后端的 `resolveCurrentLog` 给出日志路径，不需要它。其余一切都是行为而非部署参数，不进配置。
+只有一项：`sessionRoot`，会话日志根目录。它是纯 escape hatch。其余一切都是行为而非部署参数，不进配置。
+
+**根目录默认向后端本人索取，不来自配置也不写死。** 「旧格式日志必须可删」这一条要求推导路径，而推导必须被一个根目录约束住，因此根目录不能再是可有可无的。取值顺序（实现期确定）：
+
+1. `sessionPersistence.config.root` —— `JsonlSessionPersistence` 的 `config` 在其 `.d.ts` 里是 public，`root: string` 是**必填、无默认值**的配置项，后端自己就是 `this.root = resolve(config.root)`。插件读同一个值、做同一次 `resolve()`，与后端必然一致，同步完成、零 I/O，比抽样 `resolveCurrentLog` 再取公共前缀可靠得多。
+2. `sessionRoot` —— 仅用于该属性被挪走的 DSH 版本。排在后端**之后**而非之前：一份留在 `cordis.yml` 里过期的路径绝不能把归属校验指到另一棵树上。
+
+失败模式：两处都问不到时，`deleteLegacy` 能力在启动探测里即被禁用并说明原因，插件不推导任何路径；后端仍能定位的日志照常删除。
 
 ## 关键机制
 
@@ -147,7 +154,16 @@ label = `agentLoop.lifecycle(${sessionId})`
 
 目录路径由 JSONL 后端上 public 的 `resolveCurrentLog(id)` 给出，取 `dirname`。删除能力绑定该后端（`sessionPersistence.name === 'session-persistence-jsonl'`），其他后端一律禁用而非猜测。
 
-**`undefined` 有两种含义**（§5.2）：会话没有日志，**或者**盘上的日志是旧格式版本（`sourceVersion < 3`）。后一种情况文件真实存在却拿不到路径，不能一概当成「无文件可删」——这种会话应当报告为「无法删除：日志为待迁移的历史格式」，而不是静默当作删除成功把 id 移出归档集合。
+**`undefined` 有两种含义**（§5.2）：会话没有日志，**或者**盘上的日志是旧格式版本（`sourceVersion < 3`）。后一种情况文件真实存在却拿不到路径，绝不能当成「无文件可删」而静默把 id 移出归档集合。
+
+**旧格式日志必须可删**（这是对早先「一律拒绝、不猜」的一次有意放宽——归档区的职责就是把会话清干净，留下一批删不掉的旧会话等于这条链路没走完）。后端给不出路径时，插件自行扫描 `<root>/<project>/<sessionId>` 定位目录，但因为这是不可逆操作且目标是推导出来的，`rm` 之前必须有完整的归属证明，四项缺一不可：
+
+1. basename 与编码后的 SessionId **完全相等**，子串碰撞拒绝（`abc` 绝不能命中 `abcdef`）
+2. 目录内确实存在规范 generation 文件（`session.vN.jsonl[.zstd]`）
+3. 解析后的绝对路径确实落在会话日志根目录之下
+4. 跨平台根目录守卫（POSIX `/`、Windows 盘符根、UNC 共享根）全部挡住
+
+任何一项不过就中止，报告具体是哪一项不过，不做部分删除。日志里要留下「路径为推导而非后端给出」的记录，便于事后追溯。
 
 ### 全部归档的成员判定
 
