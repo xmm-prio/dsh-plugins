@@ -46,6 +46,10 @@ await build({
   // schemastery — a pure value library with no Service or Context identity —
   // is inlined, which keeps the published package dependency-free.
   external: [],
+  // The version the host half reports to the browser. Substituted from the
+  // manifest so a bundle can never disagree with the package it shipped in,
+  // which is the only thing reporting it is good for.
+  define: { __PLUGIN_VERSION__: JSON.stringify(manifest.version) },
   logLevel: 'info',
 })
 
