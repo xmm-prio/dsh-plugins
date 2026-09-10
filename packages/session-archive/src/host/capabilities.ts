@@ -1,7 +1,7 @@
 /**
  * Startup shape probe.
  *
- * Three of this plugin's four capabilities stand on host shapes that carry no
+ * Most of this plugin's capabilities stand on host shapes that carry no
  * compatibility promise. The contract is: look once at startup, and when
  * something is missing turn *that* capability off and say which shape was
  * missing. Never infer behaviour from the presence of a method name, and never
@@ -13,9 +13,10 @@
  */
 
 import type { CapabilityBlockCode, CapabilityId, CapabilityReport, CapabilityStatus } from '../contract.js'
+import { errorMessage } from './errors.js'
 import { probeEffectScan } from './internals/agent-effects.js'
 import { probeDeletableBackend } from './internals/jsonl-backend.js'
-import type { PersistenceLike } from './internals/jsonl-backend.js'
+import type { PersistenceLike, SessionRoot } from './internals/jsonl-backend.js'
 import { probePrivateWritePath, readWorkspaceDomainState } from './internals/workspace-state.js'
 import type { DomainFacilityLike, WorkspaceRegistryLike } from './internals/workspace-state.js'
 
@@ -31,6 +32,8 @@ export interface HostSurfaces {
   readonly storageDomain: DomainFacilityLike | undefined
   /** `ctx.get('sessionProjectionCache')`; soft, and only metadata quality depends on it. */
   readonly projectionCache: unknown
+  /** The session log root, as established from the backend or the escape hatch. */
+  readonly sessionRoot: SessionRoot
 }
 
 const AVAILABLE: CapabilityStatus = { available: true }
@@ -55,15 +58,18 @@ function probeArchive(surfaces: HostSurfaces): CapabilityStatus {
   return AVAILABLE
 }
 
-/** Removing an id from the archive set has no public API; both private members must be there. */
+/**
+ * Removing an id from the archive set has no public API; both private members
+ * must be there.
+ *
+ * One code for both, because they are one capability: the private path that
+ * writes the archive set. Which member is missing is a fact about this DSH
+ * build, not about this plugin's vocabulary, so it travels as the subject.
+ */
 function probeUnarchive(surfaces: HostSurfaces, archive: CapabilityStatus): CapabilityStatus {
   if (!archive.available) return archive
   const write = probePrivateWritePath(surfaces.workspaceRegistry!)
-  if (!write.ok) {
-    return write.missing === 'enqueue-operation'
-      ? blocked('enqueue-operation-missing', 'workspaceRegistry.enqueueOperation')
-      : blocked('registry-state-missing', 'workspaceRegistry.state')
-  }
+  if (!write.ok) return blocked('private-write-path-missing', write.subject)
   const read = readWorkspaceDomainState(surfaces.storageDomain)
   if (!read.ok) return blocked('workspace-domain-unavailable', `storageDomain.get('workspace'): ${read.reason}`)
   return AVAILABLE
@@ -95,6 +101,21 @@ function probeDelete(
   return AVAILABLE
 }
 
+/**
+ * Deleting a pre-migration log needs one thing more than deleting a current
+ * one: a session log root.
+ *
+ * `resolveCurrentLog` refuses to name an older generation's path, so the
+ * directory has to be derived — and a derivation has to be contained by, and
+ * searched under, a root. Without one nothing is derived and the panel says so
+ * before a user selects a row rather than after.
+ */
+function probeDeleteLegacy(surfaces: HostSurfaces, remove: CapabilityStatus): CapabilityStatus {
+  if (!remove.available) return remove
+  const root = surfaces.sessionRoot
+  return root.known ? AVAILABLE : blocked('log-root-unknown', root.reason)
+}
+
 /** Metadata always works; the projection cache only decides how much of it is filled in. */
 function probeMetadata(surfaces: HostSurfaces): CapabilityStatus {
   if (surfaces.persistence === undefined || typeof surfaces.persistence.list !== 'function') {
@@ -110,7 +131,7 @@ function probeMetadata(surfaces: HostSurfaces): CapabilityStatus {
 /** Every capability blocked by the same cause, used when the probe itself fails. */
 function allBlocked(code: CapabilityBlockCode, subject: string): CapabilityReport {
   const status = blocked(code, subject)
-  const ids: readonly CapabilityId[] = ['archive', 'unarchive', 'delete', 'shutdown', 'metadata']
+  const ids: readonly CapabilityId[] = ['archive', 'unarchive', 'delete', 'deleteLegacy', 'shutdown', 'metadata']
   return Object.fromEntries(ids.map((id) => [id, status])) as unknown as CapabilityReport
 }
 
@@ -124,16 +145,18 @@ export function probeCapabilities(surfaces: HostSurfaces): CapabilityReport {
     const archive = probeArchive(surfaces)
     const unarchive = probeUnarchive(surfaces, archive)
     const shutdown = probeShutdown(surfaces)
+    const remove = probeDelete(surfaces, shutdown, unarchive)
     return {
       archive,
       unarchive,
       shutdown,
-      delete: probeDelete(surfaces, shutdown, unarchive),
+      delete: remove,
+      deleteLegacy: probeDeleteLegacy(surfaces, remove),
       metadata: probeMetadata(surfaces),
     }
   } catch (error) {
     // A probe must never be the reason the harness fails to boot.
-    return allBlocked('probe-failed', error instanceof Error ? error.message : String(error))
+    return allBlocked('probe-failed', errorMessage(error))
   }
 }
 

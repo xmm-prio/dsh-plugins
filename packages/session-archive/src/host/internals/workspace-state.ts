@@ -131,10 +131,17 @@ export function withoutArchived(
   }
 }
 
-/** What the unarchive write needs from the registry, and whether it is all there. */
+/**
+ * What the unarchive write needs from the registry, and whether it is all there.
+ *
+ * The failure names the absent member in `subject`. That name is a fact about
+ * this DSH build and stays free text: this module is where host-private names
+ * are allowed to be written down, and callers pass the string along rather
+ * than branching on it.
+ */
 export type PrivateWriteProbe =
   | { readonly ok: true }
-  | { readonly ok: false; readonly missing: 'enqueue-operation' | 'registry-state' }
+  | { readonly ok: false; readonly subject: string }
 
 /**
  * Shape-check the two private members the unarchive write path uses.
@@ -147,10 +154,12 @@ export type PrivateWriteProbe =
  */
 export function probePrivateWritePath(registry: WorkspaceRegistryLike): PrivateWriteProbe {
   const candidate = registry as unknown as Partial<PrivateRegistryShape>
-  if (typeof candidate.enqueueOperation !== 'function') return { ok: false, missing: 'enqueue-operation' }
+  if (typeof candidate.enqueueOperation !== 'function') {
+    return { ok: false, subject: 'workspaceRegistry.enqueueOperation' }
+  }
   const state = candidate.state
   if (typeof state !== 'object' || state === null || !Array.isArray(state.archivedSessionIds)) {
-    return { ok: false, missing: 'registry-state' }
+    return { ok: false, subject: 'workspaceRegistry.state' }
   }
   return { ok: true }
 }

@@ -32,6 +32,7 @@ function healthy(overrides: Partial<HostSurfaces> = {}): HostSurfaces {
       get: () => ({ global: { get: () => ({ workspaceIds: [], archivedSessionIds: [] }), set: async () => {} } }),
     } as never,
     projectionCache: { cachedSnapshot: () => undefined },
+    sessionRoot: { known: true, path: '/logs', source: 'backend-config' },
     ...overrides,
   }
 }
@@ -67,10 +68,25 @@ describe('probeCapabilities', () => {
     expect(report.shutdown.available).toBe(true)
     expect(report.unarchive).toEqual({
       available: false,
-      code: 'enqueue-operation-missing',
+      code: 'private-write-path-missing',
       subject: 'workspaceRegistry.enqueueOperation',
     })
-    expect(report.delete.code).toBe('enqueue-operation-missing')
+    expect(report.delete.code).toBe('private-write-path-missing')
+  })
+
+  it('reports the same code but a different subject for either missing member', () => {
+    const registry = {
+      archivedSessionIds: [],
+      archiveSession: async () => {},
+      list: () => [],
+      enqueueOperation: (operation: () => Promise<unknown>) => operation(),
+    }
+    const report = probeCapabilities(healthy({ workspaceRegistry: registry as never }))
+    expect(report.unarchive).toEqual({
+      available: false,
+      code: 'private-write-path-missing',
+      subject: 'workspaceRegistry.state',
+    })
   })
 
   it('disables unarchive when the workspace storage domain is not open', () => {
@@ -130,6 +146,23 @@ describe('probeCapabilities', () => {
   it('rejects a projection cache whose shape is broken rather than trusting the name', () => {
     const report = probeCapabilities(healthy({ projectionCache: { cachedSnapshot: 'not a function' } }))
     expect(report.metadata.available).toBe(false)
+  })
+
+  it('blocks only deleteLegacy when the session log root is unknown', () => {
+    const report = probeCapabilities(
+      healthy({ sessionRoot: { known: false, reason: 'nothing published a root' } }),
+    )
+    expect(report.delete.available).toBe(true)
+    expect(report.deleteLegacy).toEqual({
+      available: false,
+      code: 'log-root-unknown',
+      subject: 'nothing published a root',
+    })
+  })
+
+  it('cascades a blocked delete into deleteLegacy', () => {
+    const report = probeCapabilities(healthy({ registry: { values: 'nope' } }))
+    expect(report.deleteLegacy.code).toBe('fiber-scan-unavailable')
   })
 
   it('never throws, whatever the host looks like', () => {

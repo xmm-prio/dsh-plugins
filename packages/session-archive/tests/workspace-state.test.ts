@@ -117,24 +117,24 @@ describe('probePrivateWritePath', () => {
   it('names the missing prototype method', () => {
     expect(probePrivateWritePath(registry({ state: { archivedSessionIds: [] } }))).toEqual({
       ok: false,
-      missing: 'enqueue-operation',
+      subject: 'workspaceRegistry.enqueueOperation',
     })
   })
 
   it('names the missing instance field', () => {
     expect(probePrivateWritePath(registry({ enqueueOperation: () => {} }))).toEqual({
       ok: false,
-      missing: 'registry-state',
+      subject: 'workspaceRegistry.state',
     })
   })
 
   it('rejects a state field of the wrong shape', () => {
     expect(probePrivateWritePath(registry({ enqueueOperation: () => {}, state: { archivedSessionIds: 'nope' } }))).toEqual(
-      { ok: false, missing: 'registry-state' },
+      { ok: false, subject: 'workspaceRegistry.state' },
     )
     expect(probePrivateWritePath(registry({ enqueueOperation: () => {}, state: null }))).toEqual({
       ok: false,
-      missing: 'registry-state',
+      subject: 'workspaceRegistry.state',
     })
   })
 })

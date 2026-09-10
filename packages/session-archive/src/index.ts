@@ -22,6 +22,7 @@ import { ArchiveWriter } from './host/archive-writer.js'
 import { describeCapabilities, probeCapabilities } from './host/capabilities.js'
 import { describeError } from './host/errors.js'
 import type { AgentRegistryLike } from './host/agent-teardown.js'
+import { backendName, describeSessionRoot, resolveSessionRoot } from './host/internals/jsonl-backend.js'
 import type { DomainFacilityLike } from './host/internals/workspace-state.js'
 import type { ProjectionCacheLike } from './host/metadata-reader.js'
 import { LogRemover } from './host/log-remover.js'
@@ -33,8 +34,18 @@ import { readStringArray, readString } from './host/payload.js'
 export { Config } from './config.js'
 export const name = 'session-archive'
 
-/** Published plugin version, echoed to the browser half so a stale bundle shows up. */
-const VERSION = '0.1.0'
+/** Substituted by `build.mjs` from `package.json`; absent under a bare `tsc` or vitest run. */
+declare const __PLUGIN_VERSION__: string
+
+/**
+ * Published plugin version, echoed to the browser half so a stale bundle shows up.
+ *
+ * Injected at build time rather than written here, because the whole point of
+ * echoing it is to catch a bundle that disagrees with its manifest — a value
+ * kept in sync by hand cannot detect the one thing it exists to detect. The
+ * fallback only ever appears when the module is loaded straight from source.
+ */
+const VERSION = typeof __PLUGIN_VERSION__ === 'string' ? __PLUGIN_VERSION__ : '0.0.0-source'
 
 /**
  * Hard dependencies, declared so cordis holds `apply` until they are ready.
@@ -70,14 +81,22 @@ function mount(ctx: Context, config: Config): void {
   const storageDomain = ctx.get('storageDomain') as DomainFacilityLike | undefined
   const projectionCache = ctx.get('sessionProjectionCache') as ProjectionCacheLike | undefined
 
+  const sessionRoot = resolveSessionRoot(persistence, config.sessionRoot)
   const capabilities = probeCapabilities({
     registry: ctx.registry,
     workspaceRegistry: registry,
     persistence,
     storageDomain,
     projectionCache,
+    sessionRoot,
   })
-  ctx.logger.info(['session-archive: capability probe', ...describeCapabilities(capabilities)].join('\n'))
+  ctx.logger.info(
+    [
+      'session-archive: capability probe',
+      `  session log root: ${describeSessionRoot(sessionRoot)}`,
+      ...describeCapabilities(capabilities),
+    ].join('\n'),
+  )
 
   const archive = new ArchiveWriter({ registry, storageDomain })
   const teardown = new AgentTeardown({
@@ -90,13 +109,13 @@ function mount(ctx: Context, config: Config): void {
     registry,
     teardown,
     archive,
-    sessionRoot: config.sessionRoot,
+    sessionRoot,
     logger: ctx.logger,
   })
 
   const service = new SessionArchiveService({
     capabilities,
-    persistenceBackend: typeof persistence.name === 'string' ? persistence.name : '(unnamed)',
+    persistenceBackend: backendName(persistence),
     version: VERSION,
     registry,
     metadata,
