@@ -1,0 +1,11 @@
+packages:
+  - 'packages/*'
+
+# DSH core packages must resolve to exactly one physical copy: a second copy of
+# cordis splits the Service/Context class identity and breaks `instanceof`.
+minimumReleaseAge: 0
+allowBuilds:
+  esbuild: true
+  # Only the .d.ts of the JSONL persistence backend is used at build time; its
+  # native FFI dependency is never loaded from this repo.
+  koffi: false
