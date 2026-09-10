@@ -3,7 +3,7 @@
 > 核实对象：`spec.md` 与 `issues/01..12` 中对 DSH 非公开内部形状的断言
 > 核实基准：公共 npm registry 上的 `@deepseek-ai/dsh@0.1.5-rc.1` 及其全部子包
 > 核实方式：读取 tarball 内的 `lib/types/**/*.d.ts` 与编译产物 `lib/*.js`；对 cordis 另有 `src/*.ts` 原文；对最关键的 effect 语义额外写了两个 Node 探针脚本实测
-> 侦察工作区：`C:\Users\Administrator\AppData\Local\Temp\2\dsh-recon`（即 `$env:TEMP\dsh-recon`，已保留）
+> 侦察工作区：`$env:TEMP\dsh-recon`（插件完工后已删除，重建方式见文末附录）
 
 本文中所有标识符、签名、代码片段、文件路径均保持原文，不作翻译。
 文件路径的写法约定为 `<包名>/<包内相对路径>:<行号>`，对应磁盘位置为 `$env:TEMP\dsh-recon\node_modules\@deepseek-ai\<包名>\<包内相对路径>`。
@@ -1648,15 +1648,16 @@ function anchorInsertedPluginNames(patches, file) {
 
 ## 附：可复现的实测脚本
 
-两个探针脚本留在侦察目录里，可直接重跑：
+侦察工作区与其中的两个探针脚本已在插件完工后删除。它们当初验证的两组语义现在由仓库内的单元测试常驻锁定，不必再靠一次性脚本：
 
-- `C:\Users\Administrator\AppData\Local\Temp\2\dsh-recon\probe-effect.mjs` —— 验证 effect wrapper 的 `await wrapper` vs `await wrapper()`、memoization、`registry → fibers → _disposables` 枚举链路、disposer 逆序执行
-- `C:\Users\Administrator\AppData\Local\Temp\2\dsh-recon\probe-inject.mjs` —— 验证 `ctx.<service>` vs `ctx.get(name)` 的 inject 要求、嵌套 effect 在 `_disposables` 中的可见性
+- effect wrapper 的 `await wrapper` 与 `await wrapper()` 之别、外部不可 memoize、`registry → fibers → _disposables` 枚举链路、disposer 逆序执行 —— 见 `packages/session-archive/tests/agent-effects.test.ts`，其中的 fixture 特意做成「既可调用又是 thenable」，写错哪一种都会红。
+- `ctx.<service>` 与 `ctx.get(name)` 的 inject 要求之别 —— 结论已落进 `spec.md` 的架构一节与实现的依赖声明。
 
-运行方式（PowerShell）：
+需要重建侦察工作区时，一条命令即可（约 518 个包、214 MB）：
 
 ```powershell
-cd "$env:TEMP\dsh-recon"
-node "$env:TEMP\dsh-recon\probe-effect.mjs"
-node "$env:TEMP\dsh-recon\probe-inject.mjs"
+mkdir "$env:TEMP\dsh-recon"; cd "$env:TEMP\dsh-recon"
+npm install @deepseek-ai/dsh@0.1.5-rc.1 --ignore-scripts
 ```
+
+本文正文里 `<包名>/<包内相对路径>:<行号>` 形式的引用与该目录是否存在无关，重建后即可逐条复查。

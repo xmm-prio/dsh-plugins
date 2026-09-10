@@ -1006,18 +1006,8 @@ Pop-Location
 - **没有任何 dsh / node 进程在跑，3080 端口已释放。**
 - `~/.dsh/profiles/web/package.json` 已还原为初始状态（`bundles` 只有 `dsh-base` 与 `dsh-web-app`，无 `dependencies`）。
 - `~/.dsh/profiles/web/node_modules/@deepseek-ai/` 无物理副本。
-- 一次性插件保留在 `C:\Users\Administrator\dsh-dev\`，仓库内除本文外未新增任何文件：
-
-  ```text
-  C:\Users\Administrator\dsh-dev\hello.overlay.yml
-  C:\Users\Administrator\dsh-dev\simulate-client.mjs
-  C:\Users\Administrator\dsh-dev\hello-plugin\package.json
-  C:\Users\Administrator\dsh-dev\hello-plugin\cordis.patch.yml
-  C:\Users\Administrator\dsh-dev\hello-plugin\lib\index.js
-  C:\Users\Administrator\dsh-dev\hello-plugin\lib\client.js
-  ```
-
-不再需要时整目录删除即可；DSH 本身可用 `npm uninstall -g @deepseek-ai/dsh` 卸载，`~/.dsh` 需手工删除。
+- 一次性插件目录 `C:\Users\Administrator\dsh-dev\`（含 `hello-plugin`、`hello.overlay.yml`、`simulate-client.mjs`）已在 `session-archive` 完工后删除。本文各节仍逐字引用这些路径，那是当时的实测记录；需要重走这条最小闭环时，照 §8.1–8.4 的文件内容重建即可。
+- **DSH 全局安装保留**，它不是中间产物：`packages/session-archive/e2e/verify.mjs` 依赖它启动真实宿主。真要卸载用 `npm uninstall -g @deepseek-ai/dsh`，`~/.dsh` 需手工删除。
 
 ---
 
@@ -1029,4 +1019,4 @@ Pop-Location
 4. **`apply` 里任何未捕获异常都会打死整个 harness**，探测与降级逻辑必须自己兜住。
 5. **`@deepseek-ai/*` 一律 peer + dev**，避免 §10 的 Symbol 分裂。
 6. 开发循环：改代码 → 重启 `dsh --profile web --patch <绝对路径overlay> --no-open --port 3080` → 复制 stdout 的 token URL 开页面。冷启动约 30 秒。
-7. 浏览器半改完想快速自检，用 §8.6 的 `simulate-client.mjs`，比重启一轮快得多。
+7. 浏览器半的验证现在有了更好的办法：`packages/session-archive/e2e/verify.mjs` 会拉起真实 DSH 与真实 Chromium 跑完整回归。§8.6 那套 Node 桩 `__ModuleLoader__` 的做法是无浏览器时的权宜之计，已被它取代——真机后来暴露出的宿主 `Modal` 无 max-height 导致列表溢出视口，正是 Node 桩看不见的那类问题。
