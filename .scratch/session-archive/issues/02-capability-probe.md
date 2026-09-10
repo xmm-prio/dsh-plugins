@@ -37,3 +37,8 @@ TypeScript 的 `private` 是编译期擦除，运行期属性真实存在；但�
 - **依赖方向按 issue 02 的更正实现**：硬依赖 `connection`、`workspaceRegistry`、`sessionPersistence` 走 `inject` + 属性访问；软依赖 `storageDomain`、`sessionProjectionCache`、`agents` 走 `ctx.get(name)?.`。spec 里「不能用 `ctx.get`」的说法方向是反的。
 - **能力之间有级联**：取消归档依赖归档；删除依赖停机**和**取消归档（删除的最后一步要把 id 移出归档集合）。级联在探测里表达一次，服务层不再重复判断。
 - 活体确认：真实 0.1.5-rc.1 上五项能力全部 `available`，`persistenceBackend: "session-persistence-jsonl"`。也就是说私有写入路径、storage domain、fiber 扫描、JSONL 定位、投影缓存在真机上都在。
+
+### 复审整改（2026-09-10）
+
+- **能力码不再泄漏宿主私有成员名。** 原先 `enqueue-operation-missing` 与 `registry-state-missing` 两个码把 `workspaceRegistry.enqueueOperation` / `.state` 直接编进了插件的词汇表——宿主哪天改名，改动就会从 `internals/` 一路漏到 `contract.ts` 与文案表。两者合并为 `private-write-path-missing`：它们本来就是同一条能力（写归档集合的私有通路），差别只在缺了哪一个成员，而那是关于这个 DSH 构建的事实，走自由文本 `subject` 传递。`probePrivateWritePath` 的返回也从 `missing: 'enqueue-operation' | 'registry-state'` 改成 `subject: string`，成员名只在 `internals/workspace-state.ts` 里写下一次。
+- **新增 `deleteLegacy` 能力，探测会话日志根目录。** spec 的探测项里本来就列着「会话日志根目录」，`capabilities.ts` 一直没有对应检查。它与 issue 06 的根目录推导是同一件事：删旧格式日志比删当前格式多需要一样东西，就是一个根。探到不了时只禁用这一项（码 `log-root-unknown`），`delete` 不受影响，面板在用户选中行之前就说明原因，而不是选完再拒绝。探测保持纯同步函数——根目录来自 `persistence.config.root` 的同步读取，不产生 I/O。

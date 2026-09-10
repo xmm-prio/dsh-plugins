@@ -51,3 +51,8 @@ Windows 上不要通过 shell 解析 `node_modules/.bin` 的 shim——那是 PO
 - **boot graph 行已在活体上确认**：`{"id":"@dsh-plugins/session-archive","url":"/plugins/??@dsh-plugins/session-archive/client.js&rev=...","external":["react","react/jsx-runtime","@deepseek-ai/dsh-client-ui-primitives"]}`。banner 的 id 必须是完整包名这一点得到印证。
 - **overlay 用了相对路径** `./lib/index.js`，在 0.1.5-rc.1 上正常工作。
 - **`ping` 端点没有单独实现**，它的作用（证明通道打通）由 `capabilities` 覆盖，多一个端点只是重复。
+
+### 复审整改（2026-09-10）
+
+- **`dsh.client.inject` 补回来了**，此前「留着是噪音」的判断不成立。实测 `dsh-client-modules/lib/client.js` 的 `arriveGraphRow` 会先递归 arrive `row.inject` 里每个**包名**的 graph 行，再 arrive 本行；图里没有的名字直接跳过，不会挂起，环也会被检出并报错。因此它是真实的到达顺序声明，不是装饰。填了三项——`@deepseek-ai/dsh-client-ui-renderer`（提供 `slots` 服务）、`@deepseek-ai/dsh-client-ui-sidebar`（声明 `sidebar.footer.action` 这个 slot）、`@deepseek-ai/dsh-client-connection`（提供 `connection`）。`@deepseek-ai/dsh-client-ui-primitives` 只在 `external` 里，不进 `inject`：它是九个静态种子之一，`require()` 无条件认它，声明到达顺序没有意义。
+- **版本号改为构建期注入**。`src/index.ts` 里原本手写 `const VERSION = '0.1.0'`，与 `package.json` 靠人工同步——而这个值存在的唯一目的就是暴露「bundle 与它所在的包对不上」，靠手工同步的值恰恰检不出它唯一要检的东西。改为 `build.mjs` 用 esbuild `define` 从 manifest 注入 `__PLUGIN_VERSION__`，源码侧 `declare const` 加 `typeof` 兜底，直接从源码加载（vitest、裸 `tsc`）时回落到 `0.0.0-source`。产物已核对：`lib/index.js` 里是 `var VERSION = true ? "0.1.0" : "0.0.0-source"`。

@@ -65,3 +65,14 @@ SessionId 需校验：非空、有长度上限、不含路径分隔符与 NUL、
 - **`owned: true`（也就是 basename 归属校验）只对 `scanned` 这一种情况成立**——那是本插件自己拼出来的路径，必须自证。后端给出的路径不做这个校验，否则是在质疑后端。
 - **`abc` 与 `abcdef` 的子串碰撞**：`scanForSessionDir` 只认名字**完全等于**会话 id、且内部含有世代文件的目录，绝不做前缀匹配。跨平台根目录守卫（POSIX `/`、Windows `C:\`、UNC）单测覆盖。
 - 活体确认：真实日志路径形如 `~/.dsh/sessions/--<编码后的 cwd>--/<会话 id>/session.v3.jsonl.zstd`，会话目录的 basename 就是原始会话 id。删除后目录确实从盘上消失，id 同时离开归档集合、工作区账本和持久化语料。未归档会话、非法会话 id 都被正确拒绝。
+
+### 复审整改（2026-09-10）
+
+按 spec 修订后的「旧格式日志必须可删」重做。
+
+- **根目录向后端索取，不再依赖配置。** `JsonlSessionPersistence` 的 `config` 在其 `.d.ts` 里是 public，`root: string` 必填无默认，后端自己就是 `this.root = resolve(config.root)`（`lib/index.js:2287`）。读同一个值做同一次 `resolve()`，与后端必然一致，同步完成、零 I/O。`sessionRoot` 降为它之后的 escape hatch——排在后面是刻意的，一份过期的 `cordis.yml` 绝不能把归属校验指到另一棵树上。两处都问不到时 `deleteLegacy` 被探测禁用，不推导任何路径。见 spec §配置。
+- **四项归属证明落在 `proveDerivedOwnership` 一个函数里**，返回「哪一项没过」而不是布尔值。三项不需要文件系统的先跑（basename 全等、根内包含、跨平台根守卫），最后才 `readdir` 查世代文件——不去读一个形状已经不合格的路径。第一项与 `findSessionDirs` 搜的是同一件事，这是刻意的重复：搜索是推导的实现，证明是 `rm` 真正站着的断言，断言不能只能经由「碰巧满足它的那段代码」才到达。19 个单测覆盖，含 `abc`/`abcdef` 双向子串碰撞、卷根（`/`、`C:\`、`\\server\share`）、相对路径、目录不存在、只有非世代文件、根名前缀相似（`/root` vs `/root-other`）。
+- **推导出的路径删除后会在日志里写明「由本插件推导得出，而非后端提供」**，单测锁这条日志。同名目录出现在两个 project 下时报 `log-path-refused` 并列出全部候选，不猜。
+- **清账失败不再吞掉。** 原 `forgetSession` 对 `detachSession` 与 `dropFromArchiveSet` 的失败只 `warn`，然后照样返回成功——用户看到「已删除」，实际上会话还挂在工作区账本上。现在分两个码如实报告：`ledger-detach-failed`（日志已删、仍在 N 个账本里、**归档集合被有意保持不动**，因为此时释放它会让会话以未分组的运行中行重新冒出来，指向一个已经不存在的目录）与 `archive-set-stale`（日志已删、账本已清、id 还在归档集合里）。两条文案都说明「现在实际处于什么状态」，而不是只说失败。
+- **宿主错误识别统一到 `host/errors.ts` 的 `error.name` 谓词。** 此前有三套并存：name 谓词、`unsupportedFormatPath` 的鸭子类型嗅探、`probeWriteLeaseReleased` 里的裸 catch。现在 `unsupportedFormatPath` 只在 `isFormatUnsupportedError` 认定之后才去读 `location.path`；写租约探针用 `isAlreadyOwnedError` 区分「租约还被持有」与「探针无法评估」，两者仍都返回未释放——探针是不可逆动作前的最后一道门，评估不了就拒绝。零调用者的 `isSessionNotFoundError` 连同它的 `KNOWN` 条目一起删除。
+- **删除门序与「探针失败即不落盘」两条性质原样保留**，锁它们的单测一行未改。

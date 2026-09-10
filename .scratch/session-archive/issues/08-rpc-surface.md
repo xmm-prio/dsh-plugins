@@ -74,3 +74,9 @@ endpoint 名受 `/^[A-Za-z0-9_$.-]+$/` 约束（允许 `.` 与 `-`），故用 `
 - **注册本身包在 try/catch 里**，`apply` 逸出异常会打死宿主。
 - **原表里的 `sidebarGroups` 行删掉了，改为新增 `groups` 端点**：侧栏行内注入没有实现（见 issue 11），批量归档改在插件自己的面板里做，成员判据仍留在宿主上。
 - 活体确认：载荷类型错误返回失败信封而非 HTTP 500，且错误消息点明是哪个字段；`method` 与路由不一致被 `session-archive/bad-request` 拒绝。
+
+### 复审整改（2026-09-10）
+
+- **四个传输层错误码进了 contract。** `session-archive/bad-request`、`/handler-failed`、`/no-connection`、`/transport` 原先各自定义在两个传输模块的私有常量里，两侧对不上编译器也不会说话，而且它们绕过了文案字典——`useArchive.ts` 直接把 `` `${code}: ${message}` `` 渲染给用户。现在它们是 `TransportFailureCode` 加一个 `TRANSPORT_FAILURE` 常量表，两半共用；`CallOutcome.code` 也从 `string` 收紧到这个联合，字典因此能做穷尽检查。中文文案与其余码一视同仁，底层 message 跟在括号里——只有它能说清是哪条路由、哪个 profile。
+- **三处裸渲染统一走 `callFailureText`**：`useArchive`（经 `ArchiveCopy.transport` 注入，这个 hook 按设计不含任何字符串）、`ShutdownAll.tsx`、`sidebar/install.ts`。
+- **重复实现清掉三处**：`endpoint-router.ts` 里与 `errors.ts` 的 `describeError` 一字不差的本地 `describe` 删除；后端名回退 `typeof name === 'string' ? name : '(unnamed)'` 收进 `jsonl-backend.ts` 的 `backendName()`，`index.ts` 与探测各调一次；`error instanceof Error ? error.message : String(error)` 收进 `errors.ts` 的 `errorMessage()`。

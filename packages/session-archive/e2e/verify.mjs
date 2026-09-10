@@ -112,6 +112,40 @@ async function selectEntries(needle) {
 
 const selectionLabel = () => panel.getByText(/已选择 \d+ 个/).first().textContent()
 
+/** The archive area's group containers, as the browser lays them out. */
+const panelGroups = () =>
+  page.evaluate(() =>
+    [...document.querySelectorAll('[role="dialog"] section')]
+      .filter((section) => section.querySelector(':scope > ul') !== null)
+      .map((section) => ({
+        label: section.querySelector(':scope > header')?.textContent ?? '',
+        rows: section.querySelectorAll(':scope > ul > li').length,
+      })),
+  )
+
+/** The scroll box the list lives in, so the Modal's fixed card cannot trap rows again. */
+const listViewport = () =>
+  page.evaluate(() => {
+    const box = [...document.querySelectorAll('[role="dialog"] div')].find(
+      (element) => element.style.overflowY === 'auto',
+    )
+    if (box === undefined) return null
+    const style = getComputedStyle(box)
+    return {
+      maxHeight: style.maxHeight,
+      overflowY: style.overflowY,
+      scrolls: box.scrollHeight > box.clientHeight,
+      withinViewport: box.getBoundingClientRect().bottom <= window.innerHeight + 1,
+    }
+  })
+
+/** Type into the archive area's search box and let the list settle. */
+async function search(term) {
+  const box = panel.locator('input[type="search"]')
+  await box.fill(term)
+  await page.waitForTimeout(300)
+}
+
 try {
   // ═════════════════════════════════════════ issue 11 · sidebar row buttons
 
@@ -268,6 +302,64 @@ try {
     `${String(smallCount)} archived → ${String(smallOpen)}ms · ${String(largeCount)} archived → ${String(largeOpen)}ms`,
   )
 
+  // The list is grouped by the workspace each session came from, with
+  // everything no ledger still holds gathered into one 未分组 bucket.
+  const grouped = await panelGroups()
+  const groupTotal = grouped.reduce((sum, group) => sum + group.rows, 0)
+  check(
+    '09 · the archive area groups its rows by original workspace',
+    grouped.length > 1 &&
+      groupTotal === large &&
+      grouped.filter((group) => group.label.includes('未分组')).length === 1 &&
+      grouped.at(-1).label.includes('未分组'),
+    `${String(grouped.length)} groups covering ${String(groupTotal)}/${String(large)} rows: ${grouped
+      .map((group) => `${group.label.slice(0, 24)}=${String(group.rows)}`)
+      .join(' · ')}`,
+  )
+
+  // Every row carries all three dates and sizes the spec asks for.
+  const firstRow = await panel.locator('li').first().textContent()
+  check(
+    '09 · each row shows created time, last activity and disk usage',
+    firstRow.includes('创建于') && firstRow.includes('最近活动'),
+    firstRow.slice(0, 120),
+  )
+
+  const scrollBox = await listViewport()
+  check(
+    '09 · the list still bounds itself inside the host’s fixed-size Modal',
+    scrollBox !== null && scrollBox.overflowY === 'auto' && scrollBox.scrolls && scrollBox.withinViewport,
+    JSON.stringify(scrollBox),
+  )
+
+  // Search narrows the list, and select-all follows the filter rather than
+  // reaching rows the user cannot see. These fixture sessions never sent a
+  // prompt, so no title ever resolves and the row falls back to its id —
+  // which is exactly the degraded case the search has to keep working for.
+  const needle = bulk.workspaces[0].sessionIds[0].slice(0, 8)
+  await search(needle)
+  const filtered = await panelGroups()
+  const filteredRows = filtered.reduce((sum, group) => sum + group.rows, 0)
+  await panel.getByRole('button', { name: '全选' }).click()
+  const filteredSelection = await selectionLabel()
+  await panel.getByRole('button', { name: '取消选择' }).click()
+  await search('这个词不可能出现在任何标题里')
+  const empty = await panelGroups()
+  const emptyNotice = await panel.textContent()
+  await search('')
+  const restored = (await panelGroups()).reduce((sum, group) => sum + group.rows, 0)
+  check(
+    '09 · the search box filters the list, and select-all respects the filter',
+    filteredRows === 1 &&
+      filtered.length === 1 &&
+      filtered[0].label.includes('批量') &&
+      filteredSelection === '已选择 1 个' &&
+      empty.length === 0 &&
+      emptyNotice.includes('没有匹配的会话') &&
+      restored === large,
+    `all=${String(large)} → "${needle}"=${String(filteredRows)} in ${String(filtered.length)} group (${filteredSelection}) → no match=${String(empty.length)} groups → cleared=${String(restored)}`,
+  )
+
   await panel.locator('input[type="checkbox"]').nth(0).check()
   await panel.locator('input[type="checkbox"]').nth(1).check()
   const two = await selectionLabel()
@@ -365,7 +457,7 @@ try {
     }
     const response = await route.fetch()
     const body = await response.json()
-    const blocked = { available: false, code: 'enqueue-operation-missing', subject: 'workspaceRegistry.enqueueOperation' }
+    const blocked = { available: false, code: 'private-write-path-missing', subject: 'workspaceRegistry.enqueueOperation' }
     if (body?.result?.value?.capabilities === undefined) {
       rewrote = `unexpected envelope at ${request.url()}: ${JSON.stringify(body).slice(0, 200)}`
       return route.fulfill({ response })
@@ -388,7 +480,11 @@ try {
   const deleteOff = await panel.getByRole('button', { name: '删除', exact: true }).isDisabled()
   check(
     '09 · a blocked capability names its reason and greys out its action',
-    rewrote === 'ok' && notice.includes('宿主的写入队列已改变') && notice.includes('workspaceRegistry.enqueueOperation') && unarchiveOff && deleteOff,
+    rewrote === 'ok' &&
+      notice.includes('宿主的归档集合写入通路已改变') &&
+      notice.includes('workspaceRegistry.enqueueOperation') &&
+      unarchiveOff &&
+      deleteOff,
     `wire rewrite: ${rewrote} · as the browser reads it: ${JSON.stringify(onTheWire.capabilities.unarchive)} · unarchive disabled=${String(unarchiveOff)} · delete disabled=${String(deleteOff)}`,
   )
   await closePanel()
