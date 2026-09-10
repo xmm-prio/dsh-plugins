@@ -6,27 +6,29 @@
  *
  * 1. the session must be in the archive set — deletion is never a shortcut past
  *    archiving, and the archive area is the only place it can be triggered;
- * 2. the live agent must be gone, confirmed by the public write-lease probe;
- * 3. the directory must be named by the backend, never composed by this plugin;
- * 4. the path must pass the containment guard;
+ * 2. the live agent must be torn down;
+ * 3. the write lease must be observably released, by the public probe;
+ * 4. the directory must be named by the backend and pass the containment guard,
+ *    or — for a log the backend refuses to address — be derived here and then
+ *    *proven* to be this session's;
  * 5. only then is anything removed;
- * 6. finally the id leaves the archive set and every workspace ledger, so no
- *    row is left pointing at a directory that no longer exists.
+ * 6. finally the id leaves every workspace ledger and then the archive set, so
+ *    no row is left pointing at a directory that no longer exists.
  *
  * A gate that cannot be evaluated refuses. It never degrades into "probably
- * fine".
+ * fine", and it never reports success for a step that did not happen.
  */
 
 import { rm } from 'node:fs/promises'
 
-import type { OperationOutcome } from '../contract.js'
+import type { FailureCode, OperationFailure, OperationOutcome } from '../contract.js'
 import { checkSessionDirectory } from '../domain/fs-guard.js'
 import { validateSessionId } from '../domain/session-id.js'
 import type { AgentTeardown } from './agent-teardown.js'
 import type { ArchiveWriter } from './archive-writer.js'
 import { describeError } from './errors.js'
-import { locateSessionLog, probeWriteLeaseReleased } from './internals/jsonl-backend.js'
-import type { PersistenceLike } from './internals/jsonl-backend.js'
+import { locateSessionLog, probeWriteLeaseReleased, proveDerivedOwnership } from './internals/jsonl-backend.js'
+import type { PersistenceLike, SessionRoot } from './internals/jsonl-backend.js'
 import type { WorkspaceRegistryLike } from './internals/workspace-state.js'
 import { failure, success } from './outcome.js'
 
@@ -36,10 +38,21 @@ export interface LogRemoverDeps {
   readonly registry: WorkspaceRegistryLike
   readonly teardown: AgentTeardown
   readonly archive: ArchiveWriter
-  /** Configured log root; used as the containment root and as a last-resort locator. */
-  readonly sessionRoot: string | undefined
+  /** The session log root, established once at mount. */
+  readonly sessionRoot: SessionRoot
   readonly logger: { info(message: string): void; warn(message: string): void }
 }
+
+/** What the locate step settled on for one session. */
+type Located =
+  /** The backend named this directory; its own encoder vouches for the name. */
+  | { readonly kind: 'backend'; readonly dir: string }
+  /** This plugin composed this directory; nothing vouches for it until it is proven. */
+  | { readonly kind: 'derived'; readonly dir: string; readonly root: string }
+  /** Nothing on disk. The bookkeeping still runs. */
+  | { readonly kind: 'nothing' }
+  /** No directory may be removed, and this is why. */
+  | { readonly kind: 'refused'; readonly code: FailureCode; readonly detail: string }
 
 /** Remove archived sessions' logs from disk. */
 export class LogRemover {
@@ -76,97 +89,139 @@ export class LogRemover {
     }
 
     const located = await this.locate(id)
-    if ('code' in located) return failure(id, located.code, located.detail)
+    if (located.kind === 'refused') return failure(id, located.code, located.detail)
 
-    if (located.dir !== undefined) {
+    if (located.kind !== 'nothing') {
       const lease = await probeWriteLeaseReleased(this.deps.persistence, id)
       if (!lease.released) return failure(id, 'write-lease-held', lease.detail)
 
-      const refusal = checkSessionDirectory({
-        dir: located.dir,
-        // Only claim basename ownership for a path this plugin composed itself.
-        // The backend resolves a session directory through a segment encoder
-        // that is not published, so asserting a reproduction of it would be a
-        // guess, and a wrong guess here refuses every legitimate delete.
-        ...(located.owned ? { sessionId: id } : {}),
-        ...(this.deps.sessionRoot === undefined ? {} : { root: this.deps.sessionRoot }),
-      })
-      if (refusal !== undefined) return failure(id, 'log-path-refused', `${refusal}: ${located.dir}`)
+      const refusal = await this.vouchFor(id, located)
+      if (refusal !== undefined) return refusal
 
       try {
         await rm(located.dir, { recursive: true, force: true })
-        this.deps.logger.info(`session-archive: removed log directory of session "${id}"`)
       } catch (error) {
         return failure(id, 'remove-failed', describeError(error))
       }
+      this.deps.logger.info(
+        located.kind === 'derived'
+          ? `session-archive: removed log directory ${located.dir} of session "${id}"; the path was derived by this plugin under ${located.root}, not supplied by the backend`
+          : `session-archive: removed log directory ${located.dir} of session "${id}"`,
+      )
     }
 
-    await this.forgetSession(id)
-    return success(id)
+    return (await this.forgetSession(id)) ?? success(id)
+  }
+
+  /**
+   * Vouch for the directory about to be removed.
+   *
+   * A backend-supplied path is checked for containment and shape only —
+   * asserting a basename this plugin cannot reproduce would be second-guessing
+   * the backend's own segment encoder, and a wrong guess there refuses every
+   * legitimate delete. A derived path has no such authority behind it, so all
+   * four ownership proofs must hold and the failing one is what gets reported.
+   */
+  private async vouchFor(
+    id: string,
+    located: Extract<Located, { kind: 'backend' | 'derived' }>,
+  ): Promise<OperationFailure | undefined> {
+    if (located.kind === 'derived') {
+      const proof = await proveDerivedOwnership({ dir: located.dir, sessionId: id, root: located.root })
+      if (proof === undefined) return undefined
+      this.deps.logger.warn(
+        `session-archive: refusing to remove derived path ${located.dir} for session "${id}": ${proof}`,
+      )
+      return failure(id, proof, `${proof}: ${located.dir}`)
+    }
+
+    const root = this.deps.sessionRoot
+    const rejection = checkSessionDirectory({ dir: located.dir, ...(root.known ? { root: root.path } : {}) })
+    return rejection === undefined ? undefined : failure(id, 'log-path-refused', `${rejection}: ${located.dir}`)
   }
 
   /** Resolve the directory to remove, or the refusal that stands in its way. */
-  private async locate(
-    id: string,
-  ): Promise<
-    | { readonly dir: string | undefined; readonly owned: boolean }
-    | { readonly code: 'legacy-log-format' | 'host-error'; readonly detail: string }
-  > {
+  private async locate(id: string): Promise<Located> {
     let location: Awaited<ReturnType<typeof locateSessionLog>>
     try {
       location = await locateSessionLog(this.deps.persistence, id, this.deps.sessionRoot)
     } catch (error) {
-      return { code: 'host-error', detail: describeError(error) }
+      return { kind: 'refused', code: 'host-error', detail: describeError(error) }
     }
 
     switch (location.kind) {
       case 'current':
-        return { dir: location.dir, owned: false }
+        return { kind: 'backend', dir: location.dir }
       case 'unreadable-format':
         // The refusal still names the exact artifact, so the directory is known
         // even though this DSH build will not read the generation inside it.
         this.deps.logger.warn(`session-archive: session "${id}" stores an unreadable generation: ${location.detail}`)
-        return { dir: location.dir, owned: false }
-      case 'scanned':
-        return { dir: location.dir, owned: true }
+        return { kind: 'backend', dir: location.dir }
+      case 'derived':
+        return { kind: 'derived', dir: location.dir, root: location.root }
       case 'absent':
         // Never materialized. There is nothing to remove, but the bookkeeping
         // still has to run so the id stops appearing in the archive area.
-        return { dir: undefined, owned: false }
-      case 'legacy-format':
+        return { kind: 'nothing' }
+      case 'root-unknown':
+        return { kind: 'refused', code: 'log-root-unknown', detail: location.reason }
+      case 'ambiguous':
+        return {
+          kind: 'refused',
+          code: 'log-path-refused',
+          detail: `more than one directory claims this session: ${location.dirs.join(', ')}`,
+        }
+      case 'not-found':
       default:
         return {
-          code: 'legacy-log-format',
-          detail:
-            'the log is stored in an older format version, so the backend will not name its path; set sessionRoot to allow a scan',
+          kind: 'refused',
+          code: 'legacy-log-not-found',
+          detail: `the backend will not name this session's log and no directory under ${location.root} is named after it`,
         }
     }
   }
 
   /**
-   * Drop the id from the archive set and from every workspace ledger.
+   * Drop the id from every workspace ledger and then from the archive set.
    *
-   * Both are required for the row to actually disappear: an id left in a ledger
-   * comes back as a visible session pointing at nothing, and an id left in the
-   * archive set comes back as an archive-area row with no log.
+   * Both are required for the row to actually disappear, and the order is the
+   * delete sequence's own: an id left in a ledger comes back as a visible
+   * session pointing at nothing, so it must go first, and the archive set is
+   * released last because leaving the set is what makes the session eligible
+   * to reappear.
+   *
+   * A failure here is reported, never logged and swallowed. The log is already
+   * gone at this point, so the honest thing to tell a user is which half of the
+   * bookkeeping survived — and the archive-set write is deliberately skipped
+   * when a ledger still holds the id, because releasing it then would resurface
+   * the session as a live, ungrouped row over a directory that no longer
+   * exists.
+   *
+   * @returns the failure to report, or undefined when the session is fully forgotten.
    */
-  private async forgetSession(id: string): Promise<void> {
+  private async forgetSession(id: string): Promise<OperationFailure | undefined> {
+    const stuck: string[] = []
     for (const workspace of this.deps.registry.list()) {
       if (!workspace.sessionIds.includes(id)) continue
       try {
         await workspace.detachSession(id)
       } catch (error) {
-        this.deps.logger.warn(
-          `session-archive: could not detach deleted session "${id}" from workspace "${workspace.id}": ${describeError(error)}`,
-        )
+        stuck.push(`${workspace.id}: ${describeError(error)}`)
       }
     }
+    if (stuck.length > 0) {
+      const detail = `the log is deleted, but the session is still in ${String(stuck.length)} workspace ledger(s) and was left in the archive set — ${stuck.join('; ')}`
+      this.deps.logger.warn(`session-archive: could not detach deleted session "${id}": ${detail}`)
+      return failure(id, 'ledger-detach-failed', detail)
+    }
+
     try {
       await this.deps.archive.dropFromArchiveSet([id])
     } catch (error) {
-      this.deps.logger.warn(
-        `session-archive: removed the log of session "${id}" but could not update the archive set: ${describeError(error)}`,
-      )
+      const detail = `the log is deleted and the workspace ledgers are clean, but the id is still in the archive set: ${describeError(error)}`
+      this.deps.logger.warn(`session-archive: archive set not updated for deleted session "${id}": ${detail}`)
+      return failure(id, 'archive-set-stale', detail)
     }
+    return undefined
   }
 }

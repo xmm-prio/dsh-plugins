@@ -1,18 +1,32 @@
 /**
  * The only module that knows where a session's log lives on disk.
  *
- * Deletion is bound to the JSONL backend by identity, never guessed: the
- * segment encoder that composes `<root>/<projectKey>/<sessionDir>` lives in the
- * backend's unpublished `src/`, so the sole trustworthy source of a session
- * directory is `resolveCurrentLog`, which is public and returns an absolute
- * path. `dirname` of it is the session directory.
+ * Deletion is bound to the JSONL backend by identity, never guessed. The
+ * trustworthy source of a session directory is `resolveCurrentLog`, which is
+ * public and returns an absolute path; `dirname` of it is the session
+ * directory.
+ *
+ * That source has a hole: a log written in a pre-migration generation exists
+ * on disk but `resolveCurrentLog` refuses to name it. Leaving those sessions
+ * undeletable would stop the archive area's whole reason for existing one step
+ * short, so this module also *derives* a directory for them — and because a
+ * derived path is a guess about an irreversible operation, it is only ever
+ * handed on after {@link proveDerivedOwnership} has established that the
+ * directory really is that session's.
  */
 
 import { readdir, stat } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
+
+import type { OwnershipFailureCode } from '../../contract.js'
+import { checkSessionDirectory } from '../../domain/fs-guard.js'
+import { describeError, errorMessage, isAlreadyOwnedError, isFormatUnsupportedError } from '../errors.js'
 
 /** Backend label the JSONL persistence implementation shadows `Service.name` with. */
 export const JSONL_BACKEND_NAME = 'session-persistence-jsonl'
+
+/** Stand-in for a backend that reports no name at all. */
+const UNNAMED_BACKEND = '(unnamed)'
 
 /** Generation filenames the JSONL backend writes, e.g. `session.v3.jsonl.zstd`. */
 const GENERATION_FILE = /^session\.v\d+\.jsonl(?:\.zstd)?$/
@@ -20,6 +34,12 @@ const GENERATION_FILE = /^session\.v\d+\.jsonl(?:\.zstd)?$/
 /** The persistence surface this plugin uses, across both halves of the delete path. */
 export interface PersistenceLike {
   readonly name?: string
+  /**
+   * The backend's own validated plugin config. Public on
+   * `JsonlSessionPersistence`, and the only published statement of where the
+   * session log root is.
+   */
+  readonly config?: { readonly root?: unknown }
   list(options?: { signal?: AbortSignal }): Promise<readonly PersistenceSnapshot[]>
   stat(id: string, options?: { signal?: AbortSignal }): Promise<PersistenceSnapshot | undefined>
   open(id: string, access: 'read' | 'write', options?: unknown): Promise<unknown>
@@ -42,15 +62,82 @@ export interface SessionHeaderLike {
   readonly origin?: 'subagent' | undefined
 }
 
+/** The backend's diagnostic label, or a stand-in when it publishes none. */
+export function backendName(persistence: PersistenceLike | undefined): string {
+  const name = persistence?.name
+  return typeof name === 'string' && name.length > 0 ? name : UNNAMED_BACKEND
+}
+
+// --------------------------------------------------------------- the log root
+
+/** Where a known session log root came from. */
+export type SessionRootSource =
+  /** `sessionPersistence.config.root`, the backend's own published setting. */
+  | 'backend-config'
+  /** This plugin's `sessionRoot` escape hatch. */
+  | 'plugin-config'
+
+/** The session log root, or the reason there is none to be had. */
+export type SessionRoot =
+  | { readonly known: true; readonly path: string; readonly source: SessionRootSource }
+  | { readonly known: false; readonly reason: string }
+
+/**
+ * Establish the session log root without hardcoding a path.
+ *
+ * The backend answers for itself: `config` is public on
+ * `JsonlSessionPersistence` and `config.root` is a required setting with no
+ * default, resolved to an absolute path exactly the way this function resolves
+ * it. Reading it costs nothing and cannot disagree with the backend, which is
+ * why it comes first — a `sessionRoot` left over in someone's `cordis.yml`
+ * must not be able to point the containment guard at the wrong tree.
+ *
+ * The escape hatch is therefore for one situation only: a DSH build where that
+ * property has moved. Failure mode when neither is available: `deleteLegacy`
+ * is reported blocked, no path is ever derived, and a log the backend still
+ * addresses continues to delete normally.
+ *
+ * @param persistence - the mounted persistence service.
+ * @param configured - this plugin's `sessionRoot`, when set.
+ * @returns the absolute root and where it came from, or why it is unknown.
+ */
+export function resolveSessionRoot(
+  persistence: PersistenceLike | undefined,
+  configured: string | undefined,
+): SessionRoot {
+  const declared = persistence?.config?.root
+  if (typeof declared === 'string' && declared.length > 0) {
+    return { known: true, path: resolve(declared), source: 'backend-config' }
+  }
+  if (configured !== undefined && configured.length > 0) {
+    return { known: true, path: resolve(configured), source: 'plugin-config' }
+  }
+  return {
+    known: false,
+    reason: `${backendName(persistence)}.config.root is not a string and no sessionRoot is configured`,
+  }
+}
+
+/** Render a root verdict as one diagnostic line. */
+export function describeSessionRoot(root: SessionRoot): string {
+  return root.known ? `${root.path} (from ${root.source})` : `unknown: ${root.reason}`
+}
+
+// ------------------------------------------------------------------ locating
+
 /** Where a session's directory came from, or why it could not be found. */
 export type LogLocation =
   | { readonly kind: 'current'; readonly dir: string }
   /** A generation newer than this DSH understands; the refusal still carries its path. */
   | { readonly kind: 'unreadable-format'; readonly dir: string; readonly detail: string }
-  /** Located by scanning the configured session root, because the backend gave no path. */
-  | { readonly kind: 'scanned'; readonly dir: string }
-  /** A log exists, but only in a pre-migration generation the backend will not address. */
-  | { readonly kind: 'legacy-format' }
+  /** Composed by this plugin, because the backend would not name a path. Unproven. */
+  | { readonly kind: 'derived'; readonly dir: string; readonly root: string }
+  /** A log exists in an older generation, but the root is unknown so nothing can be derived. */
+  | { readonly kind: 'root-unknown'; readonly reason: string }
+  /** A log exists in an older generation, and no directory under the root is this session's. */
+  | { readonly kind: 'not-found'; readonly root: string }
+  /** More than one directory claims the id; the backend refuses these too. */
+  | { readonly kind: 'ambiguous'; readonly dirs: readonly string[] }
   /** The session was never materialized; there is nothing on disk. */
   | { readonly kind: 'absent' }
 
@@ -58,7 +145,7 @@ export type LogLocation =
 export function probeDeletableBackend(
   persistence: PersistenceLike,
 ): { readonly ok: true } | { readonly ok: false; readonly missing: 'backend' | 'resolver'; readonly subject: string } {
-  const name = typeof persistence.name === 'string' ? persistence.name : '(unnamed)'
+  const name = backendName(persistence)
   if (name !== JSONL_BACKEND_NAME) return { ok: false, missing: 'backend', subject: name }
   if (typeof persistence.resolveCurrentLog !== 'function') {
     return { ok: false, missing: 'resolver', subject: `${name}.resolveCurrentLog` }
@@ -66,9 +153,8 @@ export function probeDeletableBackend(
   return { ok: true }
 }
 
-/** Read `location.path` off a `SessionFormatUnsupportedError` without importing the class. */
+/** Read `location.path` off an already-identified `SessionFormatUnsupportedError`. */
 function unsupportedFormatPath(error: unknown): string | undefined {
-  if (typeof error !== 'object' || error === null) return undefined
   const location = (error as { location?: unknown }).location
   if (typeof location !== 'object' || location === null) return undefined
   const path = (location as { path?: unknown }).path
@@ -85,78 +171,124 @@ function unsupportedFormatPath(error: unknown): string | undefined {
  * migrates older generations on read while `resolveCurrentLog` refuses them.
  *
  * @param persistence - the mounted persistence service.
- * @param sessionId - the session to locate.
- * @param sessionRoot - configured escape-hatch log root, used to scan when the
- * backend will not name a path.
+ * @param sessionId - the session to locate; assumed already validated.
+ * @param root - the session log root, as established at mount.
  * @param signal - caller cancellation.
  * @returns where the directory is, or why there is none to remove.
  */
 export async function locateSessionLog(
   persistence: PersistenceLike,
   sessionId: string,
-  sessionRoot: string | undefined,
+  root: SessionRoot,
   signal?: AbortSignal,
 ): Promise<LogLocation> {
-  const resolve = persistence.resolveCurrentLog
-  if (typeof resolve === 'function') {
+  const resolveLog = persistence.resolveCurrentLog
+  if (typeof resolveLog === 'function') {
     try {
-      const path = await resolve.call(persistence, sessionId, signal)
+      const path = await resolveLog.call(persistence, sessionId, signal)
       if (path !== undefined) return { kind: 'current', dir: dirname(path) }
     } catch (error) {
+      if (!isFormatUnsupportedError(error)) throw error
       const path = unsupportedFormatPath(error)
       if (path === undefined) throw error
-      return {
-        kind: 'unreadable-format',
-        dir: dirname(path),
-        detail: error instanceof Error ? error.message : String(error),
-      }
+      return { kind: 'unreadable-format', dir: dirname(path), detail: errorMessage(error) }
     }
   }
 
   const materialized = (await persistence.stat(sessionId, signal === undefined ? {} : { signal })) !== undefined
   if (!materialized) return { kind: 'absent' }
 
-  const scanned = sessionRoot === undefined ? undefined : await scanForSessionDir(sessionRoot, sessionId, signal)
-  return scanned === undefined ? { kind: 'legacy-format' } : { kind: 'scanned', dir: scanned }
+  if (!root.known) return { kind: 'root-unknown', reason: root.reason }
+  const candidates = await findSessionDirs(root.path, sessionId, signal)
+  if (candidates.length === 0) return { kind: 'not-found', root: root.path }
+  if (candidates.length > 1) return { kind: 'ambiguous', dirs: candidates }
+  return { kind: 'derived', dir: candidates[0]!, root: root.path }
 }
 
 /**
- * Escape hatch: find `<root>/<project>/<sessionId>` by walking one level of
- * project directories.
+ * Every `<root>/<project>/<sessionId>` directory, by exact name.
  *
- * The backend's segment encoder is unreachable, so this only finds directories
- * whose name is the session id verbatim — an exact match, never a prefix, so a
- * session `abc` can never resolve onto `abcdef`. The directory must also
- * actually contain a generation file, so an empty look-alike is not accepted.
+ * The backend's segment encoder lives in an unpublished module, so the only
+ * name this can look for is the session id verbatim. That is a search, not a
+ * proof: it finds candidates and {@link proveDerivedOwnership} decides whether
+ * one may be removed. Matching is whole-name equality, so session `abc` never
+ * reaches a directory called `abcdef`.
  *
- * @param root - configured session log root.
+ * @param root - the session log root.
  * @param sessionId - the session to find; assumed already validated.
  * @param signal - caller cancellation.
- * @returns the absolute directory, or undefined when no candidate qualifies.
+ * @returns every absolute candidate directory, in project order.
  */
-async function scanForSessionDir(root: string, sessionId: string, signal?: AbortSignal): Promise<string | undefined> {
+async function findSessionDirs(root: string, sessionId: string, signal?: AbortSignal): Promise<string[]> {
   let projects: string[]
   try {
     projects = (await readdir(root, { withFileTypes: true }))
       .filter((entry) => entry.isDirectory())
       .map((entry) => entry.name)
   } catch {
-    return undefined
+    return []
   }
 
+  const found: string[] = []
   for (const project of projects) {
     signal?.throwIfAborted()
     const candidate = join(root, project, sessionId)
     try {
-      if (!(await stat(candidate)).isDirectory()) continue
-      const contents = await readdir(candidate)
-      if (contents.some((name) => GENERATION_FILE.test(name))) return candidate
+      if ((await stat(candidate)).isDirectory()) found.push(candidate)
     } catch {
       continue
     }
   }
-  return undefined
+  return found
 }
+
+/**
+ * Establish that a self-derived directory really is one session's log directory.
+ *
+ * Four proofs, all required, reported one at a time so a refusal says which
+ * expectation broke. The three that need no filesystem run first, so nothing
+ * is read off a path whose shape is already inadmissible; the order they are
+ * *reported* in is therefore not the order the spec lists them, but the set is
+ * the same and any single failure aborts the delete.
+ *
+ * Proof 1 restates what {@link findSessionDirs} searched for. That is
+ * deliberate: the search is an implementation of the derivation and this is
+ * the assertion the `rm` stands on, and the assertion must not be reachable
+ * only through the code that happens to satisfy it today.
+ *
+ * @param check - the candidate directory, its claimed session, and the root.
+ * @returns the failed proof, or undefined when all four hold.
+ */
+export async function proveDerivedOwnership(check: {
+  readonly dir: string
+  readonly sessionId: string
+  readonly root: string
+}): Promise<OwnershipFailureCode | undefined> {
+  const rejection = checkSessionDirectory({ dir: check.dir, sessionId: check.sessionId, root: check.root })
+  switch (rejection) {
+    case undefined:
+      break
+    case 'outside-root':
+      return 'ownership-outside-root'
+    case 'foreign-basename':
+    // An id that cannot address a directory cannot be a directory's name
+    // either; `LogRemover` rejects those long before this point.
+    case 'invalid-session-id':
+      return 'ownership-basename-mismatch'
+    default:
+      return 'ownership-unsafe-root'
+  }
+
+  let contents: string[]
+  try {
+    contents = await readdir(check.dir)
+  } catch {
+    return 'ownership-generation-missing'
+  }
+  return contents.some((name) => GENERATION_FILE.test(name)) ? undefined : 'ownership-generation-missing'
+}
+
+// -------------------------------------------------------------- write lease
 
 /**
  * Confirm that nobody holds the session's write lease.
@@ -165,6 +297,11 @@ async function scanForSessionDir(root: string, sessionId: string, signal?: Abort
  * `open(id, 'write')` throws `SessionAlreadyOwnedError` while a lease is out.
  * A successful open therefore proves the write path is free — and immediately
  * makes *this* code the owner, so the handle is closed before returning.
+ *
+ * Any other failure is also "not released": the probe is the last gate before
+ * an irreversible removal, so a probe that could not be evaluated refuses
+ * rather than assuming the best. Naming the lease case apart is what tells a
+ * user to close the session from a probe that broke for some other reason.
  *
  * @param persistence - the mounted persistence service.
  * @param sessionId - the session to probe.
@@ -178,7 +315,12 @@ export async function probeWriteLeaseReleased(
   try {
     handle = await persistence.open(sessionId, 'write')
   } catch (error) {
-    return { released: false, detail: error instanceof Error ? error.message : String(error) }
+    return {
+      released: false,
+      detail: isAlreadyOwnedError(error)
+        ? `the write lease is still held: ${errorMessage(error)}`
+        : `the write-lease probe could not be evaluated: ${describeError(error)}`,
+    }
   }
   await closeQuietly(handle)
   return { released: true }
