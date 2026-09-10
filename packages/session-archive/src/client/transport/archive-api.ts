@@ -12,13 +12,19 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 
-import { CHANNEL, endpointName } from '../../contract.js'
-import type { EndpointMap, RequestOf, ResponseOf } from '../../contract.js'
+import { CHANNEL, TRANSPORT_FAILURE, endpointName } from '../../contract.js'
+import type { EndpointMap, RequestOf, ResponseOf, TransportFailureCode } from '../../contract.js'
 
-/** The result of one endpoint call: a value, or a reason it did not arrive. */
+/**
+ * The result of one endpoint call: a value, or a reason it did not arrive.
+ *
+ * The four codes are declared in the contract, so both the two produced here
+ * and the two that arrive off the wire are the same vocabulary the browser
+ * half has prose for.
+ */
 export type CallOutcome<T> =
   | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly code: string; readonly message: string }
+  | { readonly ok: false; readonly code: TransportFailureCode; readonly message: string }
 
 /** The connection service's browser-side RPC caller. */
 interface RpcCaller {
@@ -27,7 +33,9 @@ interface RpcCaller {
     endpoint: string,
     payload: unknown,
     signal?: AbortSignal,
-  ): Promise<{ ok: true; value: unknown } | { ok: false; error: { code: string; message: string } }>
+  ): Promise<
+    { ok: true; value: unknown } | { ok: false; error: { code: TransportFailureCode; message: string } }
+  >
 }
 
 /** Typed access to every endpoint of the host half. */
@@ -37,12 +45,6 @@ export type ArchiveApi = {
     signal?: AbortSignal,
   ) => Promise<CallOutcome<ResponseOf<K>>>
 }
-
-/** Failure code for "the connection service is not mounted in this profile". */
-const NO_CONNECTION = 'session-archive/no-connection'
-
-/** Failure code for a transport-level throw. */
-const TRANSPORT = 'session-archive/transport'
 
 /**
  * Bind the endpoint set to a plugin context.
@@ -64,7 +66,11 @@ export function createArchiveApi(ctx: Context): ArchiveApi {
     const connection = ctx.get('connection') as { rpc?: RpcCaller } | undefined
     const rpc = connection?.rpc
     if (rpc === undefined) {
-      return { ok: false, code: NO_CONNECTION, message: 'this profile does not mount the connection service' }
+      return {
+        ok: false,
+        code: TRANSPORT_FAILURE.noConnection,
+        message: 'this profile does not mount the connection service',
+      }
     }
     try {
       const result = await rpc.call(CHANNEL, endpointName(operation), payload, signal)
@@ -72,7 +78,11 @@ export function createArchiveApi(ctx: Context): ArchiveApi {
         ? { ok: true, value: result.value as ResponseOf<K> }
         : { ok: false, code: result.error.code, message: result.error.message }
     } catch (error) {
-      return { ok: false, code: TRANSPORT, message: error instanceof Error ? error.message : String(error) }
+      return {
+        ok: false,
+        code: TRANSPORT_FAILURE.transport,
+        message: error instanceof Error ? error.message : String(error),
+      }
     }
   }
 

@@ -14,8 +14,9 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 
-import { CHANNEL, OPERATIONS, endpointName, endpointPath } from '../../contract.js'
-import type { EndpointMap, ResponseOf } from '../../contract.js'
+import { CHANNEL, OPERATIONS, TRANSPORT_FAILURE, endpointName, endpointPath } from '../../contract.js'
+import type { EndpointMap, ResponseOf, TransportFailureCode } from '../../contract.js'
+import { describeError } from '../errors.js'
 
 /** One endpoint implementation. The payload arrives untyped, straight off the wire. */
 export type EndpointHandler<K extends keyof EndpointMap> = (
@@ -25,12 +26,6 @@ export type EndpointHandler<K extends keyof EndpointMap> = (
 
 /** The complete endpoint table; every operation in the contract must be answered. */
 export type EndpointHandlers = { readonly [K in keyof EndpointMap]: EndpointHandler<K> }
-
-/** Failure code carried by the outer envelope when a handler throws. */
-const HANDLER_FAILURE = 'session-archive/handler-failed'
-
-/** Failure code carried by the outer envelope when the request is not well formed. */
-const BAD_REQUEST = 'session-archive/bad-request'
 
 /** The `rpcId` echoed when the request was too malformed to carry one. */
 const UNKNOWN_RPC_ID = '00000000-0000-0000-0000-000000000000'
@@ -63,13 +58,8 @@ function successEnvelope(rpcId: string, value: unknown): Response {
  * error that carries none of this detail, and the panel would have nothing to
  * show the user.
  */
-function failureEnvelope(rpcId: string, code: string, message: string): Response {
+function failureEnvelope(rpcId: string, code: TransportFailureCode, message: string): Response {
   return Response.json({ type: 'server-response', rpcId, result: { ok: false, error: { code, message, details: {} } } })
-}
-
-/** Render an unknown thrown value as a single diagnostic line. */
-function describe(error: unknown): string {
-  return error instanceof Error ? `${error.name}: ${error.message}` : String(error)
 }
 
 /**
@@ -95,18 +85,24 @@ export function registerEndpoints(ctx: Context, handlers: EndpointHandlers): voi
         try {
           body = await request.json()
         } catch {
-          return failureEnvelope(UNKNOWN_RPC_ID, BAD_REQUEST, 'request body is not valid JSON')
+          return failureEnvelope(UNKNOWN_RPC_ID, TRANSPORT_FAILURE.badRequest, 'request body is not valid JSON')
         }
         const envelope = decodeRequest(body)
-        if (typeof envelope === 'string') return failureEnvelope(UNKNOWN_RPC_ID, BAD_REQUEST, envelope)
+        if (typeof envelope === 'string') {
+          return failureEnvelope(UNKNOWN_RPC_ID, TRANSPORT_FAILURE.badRequest, envelope)
+        }
         if (envelope.method !== method) {
-          return failureEnvelope(envelope.rpcId, BAD_REQUEST, `method ${envelope.method} does not match ${method}`)
+          return failureEnvelope(
+            envelope.rpcId,
+            TRANSPORT_FAILURE.badRequest,
+            `method ${envelope.method} does not match ${method}`,
+          )
         }
         try {
           return successEnvelope(envelope.rpcId, await handler(envelope.payload, request.signal))
         } catch (error) {
-          ctx.logger.warn(`session-archive: endpoint ${method} failed: ${describe(error)}`)
-          return failureEnvelope(envelope.rpcId, HANDLER_FAILURE, describe(error))
+          ctx.logger.warn(`session-archive: endpoint ${method} failed: ${describeError(error)}`)
+          return failureEnvelope(envelope.rpcId, TRANSPORT_FAILURE.handlerFailed, describeError(error))
         }
       },
     }
@@ -114,7 +110,7 @@ export function registerEndpoints(ctx: Context, handlers: EndpointHandlers): voi
     try {
       ctx.effect(() => ctx.connection.fetch.register(route), `session-archive: ${CHANNEL} route ${method}`)
     } catch (error) {
-      ctx.logger.error(`session-archive: could not mount ${route.path}: ${describe(error)}`)
+      ctx.logger.error(`session-archive: could not mount ${route.path}: ${describeError(error)}`)
     }
   }
 }

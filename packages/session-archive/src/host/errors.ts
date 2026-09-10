@@ -9,6 +9,12 @@
  *
  * All the host's error classes assign `this.name` in their constructor, so the
  * name is a stable, copy-independent discriminator.
+ *
+ * This is the *only* way the host half identifies a host error. Structural
+ * duck-typing of the same classes elsewhere would be a second mechanism
+ * answering the same question, free to disagree with this one; reading a
+ * *field* off an error this module has already identified is not — that is
+ * using the identification, not repeating it.
  */
 
 /** Names of the host errors this plugin reacts to. */
@@ -16,7 +22,6 @@ const KNOWN = {
   unknownSession: 'WorkspaceUnknownSessionError',
   alreadyOwned: 'SessionAlreadyOwnedError',
   formatUnsupported: 'SessionFormatUnsupportedError',
-  notFound: 'SessionPersistenceNotFoundError',
 } as const
 
 function named(error: unknown, name: string): boolean {
@@ -38,12 +43,12 @@ export function isFormatUnsupportedError(error: unknown): boolean {
   return named(error, KNOWN.formatUnsupported)
 }
 
-/** The persistence backend has no such session. */
-export function isSessionNotFoundError(error: unknown): boolean {
-  return named(error, KNOWN.notFound)
-}
-
 /** Render any thrown value as one diagnostic line. */
 export function describeError(error: unknown): string {
   return error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+}
+
+/** The message of any thrown value, without the class name in front of it. */
+export function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
