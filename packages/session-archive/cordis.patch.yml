@@ -1,0 +1,6 @@
+# Profile layer applied when this package is installed with `dsh plugin add`.
+# The browser half needs no row of its own: `dsh-client-modules` finds it by
+# walking up from this entry to the nearest package.json and reading `dsh.client`.
+- insert:
+    - id: session-archive
+      name: '@dsh-plugins/session-archive'

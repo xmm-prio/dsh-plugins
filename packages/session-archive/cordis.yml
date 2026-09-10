@@ -1,0 +1,13 @@
+# Local debug overlay. Mount with:
+#
+#   dsh --profile web --patch <此文件的绝对路径> --no-open --port 3080
+#
+# 路径写成相对形式，以本文件所在目录为基准解析，与当前工作目录无关，因此这个
+# overlay 在任何机器上都能直接用。（`AGENTS.md` 里「插件路径必须为绝对路径」的
+# 说法在 0.1.5-rc.1 上不成立，见 README 的「已知文档偏差」。）
+#
+# 浏览器半不需要单独一行：dsh-client-modules 会从这一行的模块路径向上找到最近的
+# package.json，读它的 dsh.client 字段。
+- insert:
+    - id: session-archive
+      name: './lib/index.js'
