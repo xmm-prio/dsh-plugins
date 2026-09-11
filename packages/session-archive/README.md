@@ -14,6 +14,10 @@ DSH 自带归档，但它是单向的：会话一旦被隐藏就再也拿不回�
 
 ## 安装
 
+**需要 DSH ≥ 0.1.5-rc.1**（开发与回归都在 0.1.5-rc.1 / rc.2 上进行）。更老的宿主装得上、也能打开面板，但列不出内容：持久化后端的读接口在那之前是另一套形状——`list()` 返回的是 header 数组而不是快照，会话头用 `seedLength` 而不是 `isSeeded`，`resolveCurrentLog` 还不存在。界面上的表现是「读取归档区失败：宿主处理请求时出错」，带一句 `Cannot read properties of undefined` 之类的原始报错。
+
+查当前版本用 `dsh --version`，升级用 `npm i -g @deepseek-ai/dsh@latest`。
+
 ```bash
 dsh plugin --profile web add "github:xmm-prio/dsh-plugins#path:/packages/session-archive"
 ```

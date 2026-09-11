@@ -12,6 +12,8 @@ pnpm monorepo，`packages/` 下每个目录是一个可独立发布、独立安�
 
 ## 安装
 
+**需要 DSH ≥ 0.1.5-rc.1**。更老的宿主上插件装得上但功能不正常——宿主的内部接口在那之前是另一套形状。查版本 `dsh --version`，升级 `npm i -g @deepseek-ai/dsh@latest`。
+
 不需要 clone，也不需要改 `cordis.yml`，一条命令直接从 git 装进 profile：
 
 ```bash
