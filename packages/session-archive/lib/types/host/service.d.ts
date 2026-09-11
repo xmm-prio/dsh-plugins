@@ -49,7 +49,7 @@ export declare class SessionArchiveService {
     /** Stop every running agent, releasing their background resources. */
     shutdownAll(): Promise<BatchResult>;
     private bulkArchive;
-    /** Read the host once and shape it into what the grouping rules consume. */
+    /** Shape an already-read catalog into what the grouping rules consume. */
     private groupingInput;
     /** Which workspace's ledger still holds each session. */
     private workspaceIndex;

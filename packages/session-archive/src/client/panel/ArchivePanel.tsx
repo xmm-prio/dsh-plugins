@@ -35,7 +35,15 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ArchivedSessionEntry, CapabilityId, OperationOutcome } from '../../contract.js'
 import { buildArchiveView, entryLabel } from '../../domain/archive-view.js'
 import type { ArchiveViewGroup } from '../../domain/archive-view.js'
-import { blockText, callFailureText, deleteDescription, failureText, relativeText, text } from '../text.js'
+import {
+  blockText,
+  callFailureText,
+  catalogUnreadableText,
+  deleteDescription,
+  failureText,
+  relativeText,
+  text,
+} from '../text.js'
 import { createArchiveApi } from '../transport/archive-api.js'
 import { ShutdownAll } from './ShutdownAll.js'
 import { cls } from './stylesheet.js'
@@ -184,7 +192,9 @@ function ArchiveBody({ state }: { state: ArchiveState }): JSX.Element {
 
       <CapabilityNotices state={state} />
 
-      {entries.length === 0 ? (
+      {state.listing?.catalogError !== undefined ? (
+        <p className={cls.empty}>{catalogUnreadableText(state.listing.catalogError)}</p>
+      ) : entries.length === 0 ? (
         <p className={cls.empty}>{text.empty}</p>
       ) : view.groups.length === 0 ? (
         <p className={cls.empty}>{text.noMatch}</p>

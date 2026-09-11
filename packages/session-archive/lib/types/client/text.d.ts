@@ -42,6 +42,11 @@ export declare const text: {
     readonly empty: "归档区是空的。";
     readonly loadFailed: "读取归档区失败";
     readonly retry: "重试";
+    /**
+     * Said instead of 归档区是空的, and the distinction is the whole point: the
+     * archive set may be full, it is the session catalog that could not be read.
+     */
+    readonly catalogUnreadable: "读不出会话目录，所以列不出归档区的内容。归档集合本身没有变化，也没有会话因此丢失。";
     /** Delete confirmation. */
     readonly deleteTitle: "删除会话日志";
     readonly deleteAcknowledge: "我明白删除后无法恢复。";
@@ -66,6 +71,8 @@ export declare const text: {
     readonly unknownWorkspace: "该工作区已不存在。";
     readonly partialFailure: (n: number) => string;
 };
+/** The catalog-read failure, with the host's own message behind it. */
+export declare function catalogUnreadableText(reason: string): string;
 /** Delete-confirmation body text, which names exactly what is about to happen. */
 export declare function deleteDescription(count: number): string;
 /** Prose for the bulk-archive button injected into each sidebar row. */

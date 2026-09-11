@@ -56,6 +56,11 @@ export const text = {
   empty: '归档区是空的。',
   loadFailed: '读取归档区失败',
   retry: '重试',
+  /**
+   * Said instead of 归档区是空的, and the distinction is the whole point: the
+   * archive set may be full, it is the session catalog that could not be read.
+   */
+  catalogUnreadable: '读不出会话目录，所以列不出归档区的内容。归档集合本身没有变化，也没有会话因此丢失。',
 
   /** Delete confirmation. */
   deleteTitle: '删除会话日志',
@@ -83,6 +88,11 @@ export const text = {
   unknownWorkspace: '该工作区已不存在。',
   partialFailure: (n: number) => `${String(n)} 个操作未成功`,
 } as const
+
+/** The catalog-read failure, with the host's own message behind it. */
+export function catalogUnreadableText(reason: string): string {
+  return reason.length > 0 ? `${text.catalogUnreadable}（${reason}）` : text.catalogUnreadable
+}
 
 /** Delete-confirmation body text, which names exactly what is about to happen. */
 export function deleteDescription(count: number): string {
@@ -176,6 +186,7 @@ export function callFailureText(outcome: Extract<CallOutcome<unknown>, { ok: fal
 const REFUSAL_TEXT: Readonly<Record<BulkRefusalCode, string>> = {
   'capability-disabled': '归档能力在当前 DSH 版本上不可用',
   'unknown-scope': text.unknownWorkspace,
+  'catalog-unreadable': '读不出会话目录，无法确定这一行有哪些会话，未做任何改动',
 }
 
 /** Turn a bulk-refusal code into a sentence. */

@@ -41,11 +41,29 @@ export interface CatalogRow {
     readonly lastPromptAt: number | undefined;
     readonly title: string | undefined;
 }
-/** The whole session catalog, and whether it was served without the cache. */
-export interface Catalog {
+/** The session catalog, as read. */
+export interface ReadCatalog {
+    readonly kind: 'read';
     readonly rows: readonly CatalogRow[];
+    /** Served without the projection cache, so titles and activity are missing. */
     readonly degraded: boolean;
 }
+/** No catalog: the corpus could not be enumerated at all. */
+export interface UnreadableCatalog {
+    readonly kind: 'unreadable';
+    /** The host's own message, for a human to act on. */
+    readonly reason: string;
+}
+/**
+ * The whole session catalog, or the reason there is not one.
+ *
+ * Two very different absences, and collapsing them into an empty row list is
+ * how a user ends up being told their sessions no longer exist. `read` with no
+ * rows means the corpus was enumerated and is genuinely empty; `unreadable`
+ * means nothing was enumerated, and no statement about any session — including
+ * whether it still exists — is available to anyone above this point.
+ */
+export type Catalog = ReadCatalog | UnreadableCatalog;
 /** Read every session's listing metadata without opening a log. */
 export declare class MetadataReader {
     private readonly deps;
@@ -57,8 +75,15 @@ export declare class MetadataReader {
      * plus this process's created-but-unmaterialized ones, which is exactly the
      * set the built-in sidebar can show.
      *
+     * The corpus read is the one host call on this path with no smaller unit to
+     * fail at: the backend either enumerates every session or throws, and a
+     * single unreadable log on disk is enough to make it throw. Letting that out
+     * would take the whole archive area down over one bad file, so it is turned
+     * into a state the callers above can describe rather than an exception they
+     * can only propagate.
+     *
      * @param signal - caller cancellation.
-     * @returns one row per session, and whether the projection cache was there.
+     * @returns one row per session, or the reason there are none to give.
      */
     catalog(signal?: AbortSignal): Promise<Catalog>;
     private rowOf;

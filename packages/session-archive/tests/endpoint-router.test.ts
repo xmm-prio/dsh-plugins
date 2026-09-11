@@ -71,6 +71,9 @@ function requestWith(signal: unknown, method: string): Request {
 
 const RPC_ID = '11111111-1111-1111-1111-111111111111'
 
+/** A successful, empty listing; these tests are about the wire, not the list. */
+const EMPTY_LISTING = { entries: [], totalSizeBytes: 0, unresolved: [], degraded: false, catalogError: undefined }
+
 /** The envelope a route answers with, decoded. */
 async function callList(signal: unknown, handler: EndpointHandlers['list']) {
   const { routes, log } = mount({ list: handler })
@@ -91,7 +94,7 @@ describe('the endpoint router', () => {
     let seen: AbortSignal | undefined | 'unset' = 'unset'
     const { body } = await callList(real, async (_payload, signal) => {
       seen = signal
-      return { entries: [], totalSizeBytes: 0, unresolved: [], degraded: false }
+      return EMPTY_LISTING
     })
     expect(seen).toBe(real)
     expect(body.result.ok).toBe(true)
@@ -105,7 +108,7 @@ describe('the endpoint router', () => {
     let seen: AbortSignal | undefined | 'unset' = 'unset'
     const { body } = await callList(signal, async (_payload, given) => {
       seen = given
-      return { entries: [], totalSizeBytes: 0, unresolved: [], degraded: false }
+      return EMPTY_LISTING
     })
     expect(seen).toBeUndefined()
     expect(body.result.ok).toBe(true)

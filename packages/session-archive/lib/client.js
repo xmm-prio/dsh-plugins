@@ -96,6 +96,11 @@ var text = {
   empty: "\u5F52\u6863\u533A\u662F\u7A7A\u7684\u3002",
   loadFailed: "\u8BFB\u53D6\u5F52\u6863\u533A\u5931\u8D25",
   retry: "\u91CD\u8BD5",
+  /**
+   * Said instead of 归档区是空的, and the distinction is the whole point: the
+   * archive set may be full, it is the session catalog that could not be read.
+   */
+  catalogUnreadable: "\u8BFB\u4E0D\u51FA\u4F1A\u8BDD\u76EE\u5F55\uFF0C\u6240\u4EE5\u5217\u4E0D\u51FA\u5F52\u6863\u533A\u7684\u5185\u5BB9\u3002\u5F52\u6863\u96C6\u5408\u672C\u8EAB\u6CA1\u6709\u53D8\u5316\uFF0C\u4E5F\u6CA1\u6709\u4F1A\u8BDD\u56E0\u6B64\u4E22\u5931\u3002",
   /** Delete confirmation. */
   deleteTitle: "\u5220\u9664\u4F1A\u8BDD\u65E5\u5FD7",
   deleteAcknowledge: "\u6211\u660E\u767D\u5220\u9664\u540E\u65E0\u6CD5\u6062\u590D\u3002",
@@ -120,6 +125,9 @@ var text = {
   unknownWorkspace: "\u8BE5\u5DE5\u4F5C\u533A\u5DF2\u4E0D\u5B58\u5728\u3002",
   partialFailure: (n) => `${String(n)} \u4E2A\u64CD\u4F5C\u672A\u6210\u529F`
 };
+function catalogUnreadableText(reason) {
+  return reason.length > 0 ? `${text.catalogUnreadable}\uFF08${reason}\uFF09` : text.catalogUnreadable;
+}
 function deleteDescription(count) {
   return `\u5373\u5C06\u6C38\u4E45\u5220\u9664 ${String(count)} \u4E2A\u4F1A\u8BDD\u7684\u65E5\u5FD7\u6587\u4EF6\u3002\u8FD9\u4E9B\u4F1A\u8BDD\u4F1A\u5148\u88AB\u505C\u6B62\uFF0C\u968F\u540E\u4ECE\u5F52\u6863\u533A\u548C\u539F\u5DE5\u4F5C\u533A\u4E00\u5E76\u79FB\u9664\u3002\u6B64\u64CD\u4F5C\u4E0D\u53EF\u64A4\u9500\u3002`;
 }
@@ -177,7 +185,8 @@ function callFailureText(outcome) {
 }
 var REFUSAL_TEXT = {
   "capability-disabled": "\u5F52\u6863\u80FD\u529B\u5728\u5F53\u524D DSH \u7248\u672C\u4E0A\u4E0D\u53EF\u7528",
-  "unknown-scope": text.unknownWorkspace
+  "unknown-scope": text.unknownWorkspace,
+  "catalog-unreadable": "\u8BFB\u4E0D\u51FA\u4F1A\u8BDD\u76EE\u5F55\uFF0C\u65E0\u6CD5\u786E\u5B9A\u8FD9\u4E00\u884C\u6709\u54EA\u4E9B\u4F1A\u8BDD\uFF0C\u672A\u505A\u4EFB\u4F55\u6539\u52A8"
 };
 function refusalText(code) {
   return REFUSAL_TEXT[code] ?? code;
@@ -592,7 +601,7 @@ function ArchiveBody({ state }) {
       )
     ] }),
     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(CapabilityNotices, { state }),
-    entries.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: cls.empty, children: text.empty }) : view.groups.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: cls.empty, children: text.noMatch }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: cls.list, children: view.groups.map((group) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+    state.listing?.catalogError !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: cls.empty, children: catalogUnreadableText(state.listing.catalogError) }) : entries.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: cls.empty, children: text.empty }) : view.groups.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: cls.empty, children: text.noMatch }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: cls.list, children: view.groups.map((group) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
       ArchiveGroup,
       {
         group,

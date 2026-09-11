@@ -23,7 +23,7 @@ import type { AgentTeardown } from './agent-teardown.js'
 import type { ArchiveWriter } from './archive-writer.js'
 import type { LogRemover } from './log-remover.js'
 import { updatedAtOf } from './metadata-reader.js'
-import type { CatalogRow, MetadataReader } from './metadata-reader.js'
+import type { CatalogRow, MetadataReader, ReadCatalog } from './metadata-reader.js'
 import type { WorkspaceRegistryLike } from './internals/workspace-state.js'
 import { failure } from './outcome.js'
 
@@ -81,6 +81,13 @@ export class SessionArchiveService {
   async list(signal?: AbortSignal): Promise<ArchiveListResult> {
     const archived = new Set(this.deps.archive.archived())
     const catalog = await this.deps.metadata.catalog(signal)
+    if (catalog.kind === 'unreadable') {
+      // Nothing is known about any session, so nothing is asserted about any.
+      // `unresolved` stays empty in particular: it means "the backend no longer
+      // has this id", and reporting the whole archive set under it would tell
+      // the user their sessions are gone when all that happened is a failed read.
+      return { entries: [], totalSizeBytes: 0, unresolved: [], degraded: false, catalogError: catalog.reason }
+    }
     const workspaceOf = this.workspaceIndex()
 
     const rows = catalog.rows.filter((row) => archived.has(row.id))
@@ -96,6 +103,7 @@ export class SessionArchiveService {
       // removed outside this plugin, so the archive set has a dangling member.
       unresolved: [...archived].filter((id) => !found.has(id)),
       degraded: catalog.degraded,
+      catalogError: undefined,
     }
   }
 
@@ -138,7 +146,14 @@ export class SessionArchiveService {
       return refuseBulk('capability-disabled', capabilityDetail('archive', this.deps.capabilities))
     }
 
-    const plan = planBulkArchive({ ...(await this.groupingInput(signal)), scope })
+    const catalog = await this.deps.metadata.catalog(signal)
+    if (catalog.kind === 'unreadable') {
+      // Archiving a row whose members cannot be seen would archive nothing and
+      // report it as success. Refusing names the reason instead.
+      return refuseBulk('catalog-unreadable', catalog.reason)
+    }
+
+    const plan = planBulkArchive({ ...this.groupingInput(catalog), scope })
     if (plan.unknownScope) {
       return refuseBulk(
         'unknown-scope',
@@ -154,9 +169,8 @@ export class SessionArchiveService {
     }
   }
 
-  /** Read the host once and shape it into what the grouping rules consume. */
-  private async groupingInput(signal?: AbortSignal): Promise<GroupingInput> {
-    const catalog = await this.deps.metadata.catalog(signal)
+  /** Shape an already-read catalog into what the grouping rules consume. */
+  private groupingInput(catalog: ReadCatalog): GroupingInput {
     return {
       sessions: catalog.rows.map(sessionEntryOf),
       workspaces: this.deps.registry.list().map((workspace) => ({

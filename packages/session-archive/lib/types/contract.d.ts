@@ -80,6 +80,16 @@ export interface ArchiveListResult {
     readonly unresolved: readonly string[];
     /** True when metadata was served without the projection cache. */
     readonly degraded: boolean;
+    /**
+     * Why the session corpus could not be enumerated, when it could not.
+     *
+     * Not the same as an empty `entries`. Undefined means the archive area is
+     * exactly as listed; a message means nothing could be established about any
+     * session, and `unresolved` is then empty on purpose — "the backend no
+     * longer has this id" is a claim, and a failed read is in no position to
+     * make it about anything.
+     */
+    readonly catalogError: string | undefined;
 }
 /**
  * The four ownership proofs a *self-derived* log directory must pass before it
@@ -125,7 +135,9 @@ export interface BatchResult {
 /** Why bulk archive left a member of the row alone. Mirrors the sidebar's own rules. */
 export type ArchiveSkipReason = 'subagent' | 'already-archived' | 'blank';
 /** Why a whole bulk archive was refused before any session was considered. */
-export type BulkRefusalCode = 'capability-disabled' | 'unknown-scope';
+export type BulkRefusalCode = 'capability-disabled' | 'unknown-scope'
+/** The corpus could not be enumerated, so the row's members are unknown. */
+ | 'catalog-unreadable';
 /** Result of archiving everything in one display row. */
 export interface BulkArchiveResult {
     readonly archived: readonly string[];

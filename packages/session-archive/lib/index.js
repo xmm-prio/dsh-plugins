@@ -1604,13 +1604,29 @@ var MetadataReader = class {
    * plus this process's created-but-unmaterialized ones, which is exactly the
    * set the built-in sidebar can show.
    *
+   * The corpus read is the one host call on this path with no smaller unit to
+   * fail at: the backend either enumerates every session or throws, and a
+   * single unreadable log on disk is enough to make it throw. Letting that out
+   * would take the whole archive area down over one bad file, so it is turned
+   * into a state the callers above can describe rather than an exception they
+   * can only propagate.
+   *
    * @param signal - caller cancellation.
-   * @returns one row per session, and whether the projection cache was there.
+   * @returns one row per session, or the reason there are none to give.
    */
   async catalog(signal) {
-    const snapshots = await this.deps.persistence.list(signal === void 0 ? {} : { signal });
+    let snapshots;
+    try {
+      snapshots = await this.deps.persistence.list(signal === void 0 ? {} : { signal });
+    } catch (error) {
+      this.deps.logger.warn(
+        `session-archive: the session corpus could not be enumerated, so the archive area has nothing to describe: ${describeError(error)}`
+      );
+      return { kind: "unreadable", reason: describeError(error) };
+    }
     const cache = this.deps.projectionCache;
     return {
+      kind: "read",
       degraded: cache === void 0,
       rows: snapshots.map((snapshot) => this.rowOf(snapshot.header, snapshot.sizeBytes, cache))
     };
@@ -1764,6 +1780,9 @@ var SessionArchiveService = class {
   async list(signal) {
     const archived = new Set(this.deps.archive.archived());
     const catalog = await this.deps.metadata.catalog(signal);
+    if (catalog.kind === "unreadable") {
+      return { entries: [], totalSizeBytes: 0, unresolved: [], degraded: false, catalogError: catalog.reason };
+    }
     const workspaceOf = this.workspaceIndex();
     const rows = catalog.rows.filter((row) => archived.has(row.id));
     const found = new Set(rows.map((row) => row.id));
@@ -1774,7 +1793,8 @@ var SessionArchiveService = class {
       // An archived id the persistence backend no longer lists: the log was
       // removed outside this plugin, so the archive set has a dangling member.
       unresolved: [...archived].filter((id) => !found.has(id)),
-      degraded: catalog.degraded
+      degraded: catalog.degraded,
+      catalogError: void 0
     };
   }
   /** Take sessions out of the archive set, making them visible again. */
@@ -1810,7 +1830,11 @@ var SessionArchiveService = class {
     if (!this.deps.capabilities.archive.available) {
       return refuseBulk("capability-disabled", capabilityDetail("archive", this.deps.capabilities));
     }
-    const plan = planBulkArchive({ ...await this.groupingInput(signal), scope });
+    const catalog = await this.deps.metadata.catalog(signal);
+    if (catalog.kind === "unreadable") {
+      return refuseBulk("catalog-unreadable", catalog.reason);
+    }
+    const plan = planBulkArchive({ ...this.groupingInput(catalog), scope });
     if (plan.unknownScope) {
       return refuseBulk(
         "unknown-scope",
@@ -1824,9 +1848,8 @@ var SessionArchiveService = class {
       failed: outcomes.filter((outcome) => !outcome.ok)
     };
   }
-  /** Read the host once and shape it into what the grouping rules consume. */
-  async groupingInput(signal) {
-    const catalog = await this.deps.metadata.catalog(signal);
+  /** Shape an already-read catalog into what the grouping rules consume. */
+  groupingInput(catalog) {
     return {
       sessions: catalog.rows.map(sessionEntryOf),
       workspaces: this.deps.registry.list().map((workspace) => ({

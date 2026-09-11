@@ -500,6 +500,46 @@ try {
     `wire rewrite: ${rewrote} · as the browser reads it: ${JSON.stringify(onTheWire.capabilities.unarchive)} · unarchive disabled=${String(unarchiveOff)} · delete disabled=${String(deleteOff)}`,
   )
   await closePanel()
+  await page.unrouteAll({ behavior: 'ignoreErrors' })
+
+  // A corpus the backend cannot enumerate. Injected on the wire for the same
+  // reason as the block above: what is under test is the sentence the panel
+  // reaches for, and in particular that it is not 归档区是空的 — the archive
+  // set is untouched, only the catalog behind it could not be read.
+  let listRewrote = 'no list request was intercepted'
+  await page.route('**/api**', async (route) => {
+    const request = route.request()
+    if (!(request.postData() ?? '').includes('session-archive.list')) return route.fallback()
+    const response = await route.fetch()
+    const body = await response.json()
+    if (body?.result?.value?.entries === undefined) {
+      listRewrote = `unexpected envelope: ${JSON.stringify(body).slice(0, 200)}`
+      return route.fulfill({ response })
+    }
+    body.result.value = {
+      entries: [],
+      totalSizeBytes: 0,
+      unresolved: [],
+      degraded: false,
+      catalogError: 'Error: EIO: i/o error, scandir',
+    }
+    listRewrote = 'ok'
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
+  })
+  await harness.reloadSidebar()
+  await openPanel()
+  const unreadable = await panel.textContent()
+  check(
+    '09 · an unreadable session catalog says so, and does not call the archive area empty',
+    listRewrote === 'ok' &&
+      unreadable.includes('读不出会话目录') &&
+      unreadable.includes('EIO') &&
+      !unreadable.includes('归档区是空的') &&
+      (await panel.locator('li').count()) === 0,
+    `wire rewrite: ${listRewrote} · panel says: ${unreadable.replace(/\s+/g, ' ').slice(0, 140)}`,
+  )
+  await closePanel()
+  await page.unrouteAll({ behavior: 'ignoreErrors' })
 } catch (error) {
   check('the run completed without an unexpected error', false, String(error?.stack ?? error))
 } finally {
