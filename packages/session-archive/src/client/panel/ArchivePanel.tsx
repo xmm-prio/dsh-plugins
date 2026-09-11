@@ -26,8 +26,6 @@ import {
   Input,
   Modal,
   RiskConfirmation,
-  fileSizeText,
-  relativeTime,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useCallback, useMemo, useState } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
@@ -46,6 +44,7 @@ import {
 } from '../text.js'
 import { createArchiveApi } from '../transport/archive-api.js'
 import { ShutdownAll } from './ShutdownAll.js'
+import { fileSizeText, relativeTime } from '../format.js'
 import { cls } from './stylesheet.js'
 import { useArchive } from './useArchive.js'
 import type { ArchiveState } from './useArchive.js'

@@ -127,6 +127,16 @@ src/
 
 类名带 `dsh-archive-` 前缀。宿主的样式是哈希过的 CSS Modules，两边不可能撞车，本包也不选中宿主的任何类。
 
+### 只借组件，不借函数
+
+`@deepseek-ai/dsh-client-ui-primitives` 不是加载器会去取的插件模块，而是由宿主**主包**预置进浏览器 `require` 的——里面有什么，取决于那个 DSH 构建 tree-shaking 之后剩下什么。它没有契约，今天在的名字明天可能就不在了，而本仓库什么都没改。
+
+丢一个也不是温和的降级：`undefined` 在渲染期被当成值用就会抛异常，宿主的 slot 错误边界把整个入口卸载，用户看到的是归档区**一闪就消失**，连报错都没有。这真的发生过一次，起因是 `fileSizeText`——一个字节数格式化函数，借来只为了视觉一致。
+
+所以这里划的是一条线，不是每次现场判断：**组件可以借**，因为没有别的办法让控件看起来是原生的；**函数一律不借**，因为函数在本包里写得出来。`client/format.ts` 因此自己拥有 `fileSizeText` 与 `relativeTime`，算术与宿主逐位对齐（分桶阈值、小数位规则都一样），但现在是靠实现对齐，而不是靠宿主还愿意导出。
+
+这条线由 `tests/host-surface.test.ts` 强制：它扫描浏览器侧的全部源码，凡是从该说明符引入的小写开头的名字一律判失败。
+
 ## 通道
 
 七个端点走 `ctx.connection.fetch.register`，路径为 `/api/session-archive.<操作>`。它们挂在共享的 `/api` 通道上，因此宿主的 Host/Origin 围栏与 token/cookie 校验自动生效——已验证：无 cookie 返回 401，外域 Origin 返回 403。
