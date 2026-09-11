@@ -1,6 +1,14 @@
 /**
- * Two esbuild targets: the host half as Node ESM, the browser half wrapped in
- * the ModuleLoader closure handshake.
+ * Three outputs: the host half as Node ESM, the browser half wrapped in the
+ * ModuleLoader closure handshake, and the declarations the two `exports`
+ * entries point at.
+ *
+ * `lib/` is committed rather than built on install. pnpm refuses to run a
+ * git dependency's build scripts unless the consumer allowlists it by a
+ * commit-pinned key, so a package that builds itself on install is a package
+ * that cannot be installed from git without per-commit ceremony. Shipping the
+ * artifacts in the snapshot is what makes `dsh plugin add <git url>` work with
+ * no configuration at all.
  *
  * The upstream tsdown preset that produces the handshake is not published, so
  * the banner and footer reproduce it byte for byte. Three details are load
@@ -17,14 +25,20 @@
  *   `package.json` declares, and the two must stay identical.
  */
 
-import { readFile, writeFile } from 'node:fs/promises'
+import { execFileSync } from 'node:child_process'
+import { readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 
 import { build } from 'esbuild'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const manifest = JSON.parse(await readFile(join(here, 'package.json'), 'utf8'))
+
+// `tsc` leaves stale declarations behind when a source file is renamed, and a
+// committed `lib/` would carry them forever.
+await rm(join(here, 'lib'), { recursive: true, force: true })
 
 /** The specifiers the browser bundle is allowed to `require`. */
 const browserExternal = manifest.dsh.client.external
@@ -74,3 +88,12 @@ await build({
 const clientPath = join(here, 'lib/client.js')
 const client = await readFile(clientPath, 'utf8')
 await writeFile(clientPath, client.replace(`${banner}\n"use strict";`, banner))
+
+// Declarations for the two `exports` entries. Invoked through `process.execPath`
+// rather than the `.bin` shim, which on Windows is a `.CMD` that `execFile`
+// cannot run. Emitting also type-checks `src/`, so a type error fails the build.
+execFileSync(process.execPath, [createRequire(import.meta.url).resolve('typescript/bin/tsc'), '-p', 'tsconfig.build.json'], {
+  cwd: here,
+  stdio: 'inherit',
+})
+console.log('  lib\\types')

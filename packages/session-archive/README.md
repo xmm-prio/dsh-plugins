@@ -15,8 +15,14 @@ DSH 自带归档，但它是单向的：会话一旦被隐藏就再也拿不回�
 ## 安装
 
 ```bash
-dsh plugin add @dsh-plugins/session-archive
+dsh plugin --profile web add "github:xmm-prio/dsh-plugins#path:/packages/session-archive"
 ```
+
+`dsh plugin` 把参数原样转交给 profile 目录下的 pnpm，所以 pnpm 支持的写法都能用——`#<分支>&path:/...` 指定分支，`#<commit>&path:/...` 钉死版本。装完插件会被自动发现并进入 profile 树，无需改 `cordis.yml`。
+
+引号不能省：`&` 在多数 shell 里会被当成命令分隔符。
+
+卸载用 `dsh plugin --profile web remove @dsh-plugins/session-archive`。
 
 ## 配置
 
@@ -159,9 +165,15 @@ src/
 
 ```bash
 pnpm install
-pnpm --filter @dsh-plugins/session-archive build   # 产出 lib/index.js 与 lib/client.js
+pnpm --filter @dsh-plugins/session-archive build   # 产出 lib/index.js、lib/client.js 与 lib/types/
 pnpm test
 ```
+
+### `lib/` 为什么进了版本库
+
+pnpm 从 11 起默认拒绝执行 git 依赖的构建脚本，要求使用方在自己的 `pnpm-workspace.yaml` 里把这个包加进 `allowBuilds` 白名单。实测在冷 store 上，只有**钉死 commit SHA 的完整解析串**能匹配——`@dsh-plugins/*`、`@dsh-plugins/session-archive@*`、URL 通配、安装串本身、命令行 `--allow-build=<包名>` 全部失败。也就是说，一个装上去才构建的包，等于要求每个使用方在每次插件更新后都手动改一次 profile 里的文件。
+
+所以构建产物直接放进快照，`package.json` 里没有 `prepare`。代价是每次 `pnpm build` 都会产生 diff，改完源码记得连 `lib/` 一起提交。`.gitattributes` 把 `packages/*/lib/**` 钉成 LF，避免 Windows 检出把整个文件重写成 CRLF。
 
 本地挂载调试：
 

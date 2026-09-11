@@ -1,0 +1,4 @@
+# Build output is committed, so its line endings have to match what the build
+# emits on every platform. Without this a Windows checkout rewrites them to
+# CRLF and every `pnpm build` shows up as a whole-file diff.
+packages/*/lib/** text eol=lf

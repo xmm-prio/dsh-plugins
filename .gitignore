@@ -1,7 +1,11 @@
 node_modules/
-lib/
 dist/
 *.tsbuildinfo
 .DS_Store
 coverage/
 .vitest/
+
+# `packages/*/lib` is deliberately absent from this list. Plugins are installed
+# straight from git, and pnpm will not run a git dependency's build scripts
+# without a commit-pinned allowlist entry, so the artifacts have to be in the
+# snapshot. `pnpm build` regenerates them from scratch.
