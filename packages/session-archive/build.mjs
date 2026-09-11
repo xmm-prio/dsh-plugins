@@ -51,6 +51,11 @@ const banner =
 await build({
   entryPoints: [join(here, 'src/index.ts')],
   outfile: join(here, 'lib/index.js'),
+  // esbuild writes each module's path into a comment, relative to this
+  // directory. Pinning it to the package keeps the emitted bytes the same no
+  // matter where the build was invoked from — which a committed artifact needs,
+  // or `pnpm build` from the repo root produces a whole-file diff.
+  absWorkingDir: here,
   bundle: true,
   platform: 'node',
   target: 'node20',
@@ -70,6 +75,7 @@ await build({
 await build({
   entryPoints: [join(here, 'src/client/index.ts')],
   outfile: join(here, 'lib/client.js'),
+  absWorkingDir: here,
   bundle: true,
   platform: 'browser',
   target: 'es2022',
