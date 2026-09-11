@@ -1265,11 +1265,11 @@ function unsupportedFormatPath(error) {
   const path = location.path;
   return typeof path === "string" && path.length > 0 ? path : void 0;
 }
-async function locateSessionLog(persistence, sessionId, root, signal) {
+async function locateSessionLog(persistence, sessionId, root) {
   const resolveLog = persistence.resolveCurrentLog;
   if (typeof resolveLog === "function") {
     try {
-      const path = await resolveLog.call(persistence, sessionId, signal);
+      const path = await resolveLog.call(persistence, sessionId);
       if (path !== void 0) return { kind: "current", dir: dirname(path) };
     } catch (error) {
       if (!isFormatUnsupportedError(error)) throw error;
@@ -1278,15 +1278,15 @@ async function locateSessionLog(persistence, sessionId, root, signal) {
       return { kind: "unreadable-format", dir: dirname(path), detail: errorMessage(error) };
     }
   }
-  const materialized = await persistence.stat(sessionId, signal === void 0 ? {} : { signal }) !== void 0;
+  const materialized = await persistence.stat(sessionId) !== void 0;
   if (!materialized) return { kind: "absent" };
   if (!root.known) return { kind: "root-unknown", reason: root.reason };
-  const candidates = await findSessionDirs(root.path, sessionId, signal);
+  const candidates = await findSessionDirs(root.path, sessionId);
   if (candidates.length === 0) return { kind: "not-found", root: root.path };
   if (candidates.length > 1) return { kind: "ambiguous", dirs: candidates };
   return { kind: "derived", dir: candidates[0], root: root.path };
 }
-async function findSessionDirs(root, sessionId, signal) {
+async function findSessionDirs(root, sessionId) {
   let projects;
   try {
     projects = (await readdir(root, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
@@ -1295,7 +1295,6 @@ async function findSessionDirs(root, sessionId, signal) {
   }
   const found = [];
   for (const project of projects) {
-    signal?.throwIfAborted();
     const candidate = join(root, project, sessionId);
     try {
       if ((await stat(candidate)).isDirectory()) found.push(candidate);
@@ -1611,13 +1610,12 @@ var MetadataReader = class {
    * into a state the callers above can describe rather than an exception they
    * can only propagate.
    *
-   * @param signal - caller cancellation.
    * @returns one row per session, or the reason there are none to give.
    */
-  async catalog(signal) {
+  async catalog() {
     let snapshots;
     try {
-      snapshots = await this.deps.persistence.list(signal === void 0 ? {} : { signal });
+      snapshots = await this.deps.persistence.list();
     } catch (error) {
       this.deps.logger.warn(
         `session-archive: the session corpus could not be enumerated, so the archive area has nothing to describe: ${describeError(error)}`
@@ -1774,12 +1772,11 @@ var SessionArchiveService = class {
    * Ordered newest activity first, matching the built-in session list, so a
    * user moving between the sidebar and the archive area sees one ordering.
    *
-   * @param signal - caller cancellation.
    * @returns the rows, their total size, and the ids that resolve to nothing.
    */
-  async list(signal) {
+  async list() {
     const archived = new Set(this.deps.archive.archived());
-    const catalog = await this.deps.metadata.catalog(signal);
+    const catalog = await this.deps.metadata.catalog();
     if (catalog.kind === "unreadable") {
       return { entries: [], totalSizeBytes: 0, unresolved: [], degraded: false, catalogError: catalog.reason };
     }
@@ -1812,12 +1809,12 @@ var SessionArchiveService = class {
     return { outcomes: await this.deps.remover.remove(ids) };
   }
   /** Archive every session displayed under one workspace row. */
-  async archiveWorkspace(workspaceId, signal) {
-    return this.bulkArchive({ kind: "workspace", workspaceId }, signal);
+  async archiveWorkspace(workspaceId) {
+    return this.bulkArchive({ kind: "workspace", workspaceId });
   }
   /** Archive every session displayed under the ungrouped row. */
-  async archiveUngrouped(signal) {
-    return this.bulkArchive({ kind: "ungrouped" }, signal);
+  async archiveUngrouped() {
+    return this.bulkArchive({ kind: "ungrouped" });
   }
   /** Stop every running agent, releasing their background resources. */
   async shutdownAll() {
@@ -1826,11 +1823,11 @@ var SessionArchiveService = class {
     }
     return { outcomes: await this.deps.teardown.teardownAll() };
   }
-  async bulkArchive(scope, signal) {
+  async bulkArchive(scope) {
     if (!this.deps.capabilities.archive.available) {
       return refuseBulk("capability-disabled", capabilityDetail("archive", this.deps.capabilities));
     }
-    const catalog = await this.deps.metadata.catalog(signal);
+    const catalog = await this.deps.metadata.catalog();
     if (catalog.kind === "unreadable") {
       return refuseBulk("catalog-unreadable", catalog.reason);
     }
@@ -1931,9 +1928,6 @@ function successEnvelope(rpcId, value) {
 function failureEnvelope(rpcId, code, message) {
   return Response.json({ type: "server-response", rpcId, result: { ok: false, error: { code, message, details: {} } } });
 }
-function usableSignal(signal) {
-  return typeof signal?.throwIfAborted === "function" ? signal : void 0;
-}
 function registerEndpoints(ctx, handlers) {
   for (const operation of OPERATIONS) {
     const method = endpointName(operation);
@@ -1961,7 +1955,7 @@ function registerEndpoints(ctx, handlers) {
           );
         }
         try {
-          return successEnvelope(envelope.rpcId, await handler(envelope.payload, usableSignal(request.signal)));
+          return successEnvelope(envelope.rpcId, await handler(envelope.payload));
         } catch (error) {
           ctx.logger.warn(`session-archive: endpoint ${method} failed: ${describeError(error)}`);
           return failureEnvelope(envelope.rpcId, TRANSPORT_FAILURE.handlerFailed, describeError(error));
@@ -2062,11 +2056,11 @@ function mount(ctx, config) {
   });
   registerEndpoints(ctx, {
     capabilities: async () => service.capabilities(),
-    list: async (_payload, signal) => service.list(signal),
+    list: async () => service.list(),
     unarchive: async (payload) => service.unarchive(readStringArray(payload, "ids")),
     delete: async (payload) => service.delete(readStringArray(payload, "ids")),
-    archiveWorkspace: async (payload, signal) => service.archiveWorkspace(readString(payload, "workspaceId"), signal),
-    archiveUngrouped: async (_payload, signal) => service.archiveUngrouped(signal),
+    archiveWorkspace: async (payload) => service.archiveWorkspace(readString(payload, "workspaceId")),
+    archiveUngrouped: async () => service.archiveUngrouped(),
     shutdownAll: async () => service.shutdownAll()
   });
 }

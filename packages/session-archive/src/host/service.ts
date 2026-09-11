@@ -75,12 +75,11 @@ export class SessionArchiveService {
    * Ordered newest activity first, matching the built-in session list, so a
    * user moving between the sidebar and the archive area sees one ordering.
    *
-   * @param signal - caller cancellation.
    * @returns the rows, their total size, and the ids that resolve to nothing.
    */
-  async list(signal?: AbortSignal): Promise<ArchiveListResult> {
+  async list(): Promise<ArchiveListResult> {
     const archived = new Set(this.deps.archive.archived())
-    const catalog = await this.deps.metadata.catalog(signal)
+    const catalog = await this.deps.metadata.catalog()
     if (catalog.kind === 'unreadable') {
       // Nothing is known about any session, so nothing is asserted about any.
       // `unresolved` stays empty in particular: it means "the backend no longer
@@ -124,13 +123,13 @@ export class SessionArchiveService {
   }
 
   /** Archive every session displayed under one workspace row. */
-  async archiveWorkspace(workspaceId: string, signal?: AbortSignal): Promise<BulkArchiveResult> {
-    return this.bulkArchive({ kind: 'workspace', workspaceId }, signal)
+  async archiveWorkspace(workspaceId: string): Promise<BulkArchiveResult> {
+    return this.bulkArchive({ kind: 'workspace', workspaceId })
   }
 
   /** Archive every session displayed under the ungrouped row. */
-  async archiveUngrouped(signal?: AbortSignal): Promise<BulkArchiveResult> {
-    return this.bulkArchive({ kind: 'ungrouped' }, signal)
+  async archiveUngrouped(): Promise<BulkArchiveResult> {
+    return this.bulkArchive({ kind: 'ungrouped' })
   }
 
   /** Stop every running agent, releasing their background resources. */
@@ -141,12 +140,12 @@ export class SessionArchiveService {
     return { outcomes: await this.deps.teardown.teardownAll() }
   }
 
-  private async bulkArchive(scope: BulkArchiveScope, signal?: AbortSignal): Promise<BulkArchiveResult> {
+  private async bulkArchive(scope: BulkArchiveScope): Promise<BulkArchiveResult> {
     if (!this.deps.capabilities.archive.available) {
       return refuseBulk('capability-disabled', capabilityDetail('archive', this.deps.capabilities))
     }
 
-    const catalog = await this.deps.metadata.catalog(signal)
+    const catalog = await this.deps.metadata.catalog()
     if (catalog.kind === 'unreadable') {
       // Archiving a row whose members cannot be seen would archive nothing and
       // report it as success. Refusing names the reason instead.

@@ -34,18 +34,17 @@ export declare class SessionArchiveService {
      * Ordered newest activity first, matching the built-in session list, so a
      * user moving between the sidebar and the archive area sees one ordering.
      *
-     * @param signal - caller cancellation.
      * @returns the rows, their total size, and the ids that resolve to nothing.
      */
-    list(signal?: AbortSignal): Promise<ArchiveListResult>;
+    list(): Promise<ArchiveListResult>;
     /** Take sessions out of the archive set, making them visible again. */
     unarchive(ids: readonly string[]): Promise<BatchResult>;
     /** Delete archived sessions' logs. */
     delete(ids: readonly string[]): Promise<BatchResult>;
     /** Archive every session displayed under one workspace row. */
-    archiveWorkspace(workspaceId: string, signal?: AbortSignal): Promise<BulkArchiveResult>;
+    archiveWorkspace(workspaceId: string): Promise<BulkArchiveResult>;
     /** Archive every session displayed under the ungrouped row. */
-    archiveUngrouped(signal?: AbortSignal): Promise<BulkArchiveResult>;
+    archiveUngrouped(): Promise<BulkArchiveResult>;
     /** Stop every running agent, releasing their background resources. */
     shutdownAll(): Promise<BatchResult>;
     private bulkArchive;

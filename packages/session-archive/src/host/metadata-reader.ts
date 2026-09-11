@@ -110,13 +110,12 @@ export class MetadataReader {
    * into a state the callers above can describe rather than an exception they
    * can only propagate.
    *
-   * @param signal - caller cancellation.
    * @returns one row per session, or the reason there are none to give.
    */
-  async catalog(signal?: AbortSignal): Promise<Catalog> {
+  async catalog(): Promise<Catalog> {
     let snapshots: Awaited<ReturnType<PersistenceLike['list']>>
     try {
-      snapshots = await this.deps.persistence.list(signal === undefined ? {} : { signal })
+      snapshots = await this.deps.persistence.list()
     } catch (error) {
       this.deps.logger.warn(
         `session-archive: the session corpus could not be enumerated, so the archive area has nothing to describe: ${describeError(error)}`,

@@ -126,11 +126,11 @@ function mount(ctx: Context, config: Config): void {
 
   registerEndpoints(ctx, {
     capabilities: async () => service.capabilities(),
-    list: async (_payload, signal) => service.list(signal),
+    list: async () => service.list(),
     unarchive: async (payload) => service.unarchive(readStringArray(payload, 'ids')),
     delete: async (payload) => service.delete(readStringArray(payload, 'ids')),
-    archiveWorkspace: async (payload, signal) => service.archiveWorkspace(readString(payload, 'workspaceId'), signal),
-    archiveUngrouped: async (_payload, signal) => service.archiveUngrouped(signal),
+    archiveWorkspace: async (payload) => service.archiveWorkspace(readString(payload, 'workspaceId')),
+    archiveUngrouped: async () => service.archiveUngrouped(),
     shutdownAll: async () => service.shutdownAll(),
   })
 }

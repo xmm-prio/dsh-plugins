@@ -82,10 +82,9 @@ export declare class MetadataReader {
      * into a state the callers above can describe rather than an exception they
      * can only propagate.
      *
-     * @param signal - caller cancellation.
      * @returns one row per session, or the reason there are none to give.
      */
-    catalog(signal?: AbortSignal): Promise<Catalog>;
+    catalog(): Promise<Catalog>;
     private rowOf;
     /**
      * The cold-session projection ladder, as the built-in session list runs it.

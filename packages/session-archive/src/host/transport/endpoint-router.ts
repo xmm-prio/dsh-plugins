@@ -20,13 +20,17 @@ import { describeError } from '../errors.js'
 
 /**
  * One endpoint implementation. The payload arrives untyped, straight off the
- * wire, and the signal is absent whenever the request did not come with one
- * this host can use — see {@link usableSignal}.
+ * wire.
+ *
+ * The request's cancellation token is deliberately not handed on. Every
+ * operation ends in a host read, and where those take a token — or whether
+ * they take one positionally or in an options object — varies by DSH version;
+ * see `PersistenceLike` in `host/internals/jsonl-backend.ts` for what guessing
+ * wrong costs. Cancellation is an optimization these short reads can do
+ * without, so the token stops here rather than being threaded through three
+ * layers to a call that may not want it.
  */
-export type EndpointHandler<K extends keyof EndpointMap> = (
-  payload: unknown,
-  signal: AbortSignal | undefined,
-) => Promise<ResponseOf<K>>
+export type EndpointHandler<K extends keyof EndpointMap> = (payload: unknown) => Promise<ResponseOf<K>>
 
 /** The complete endpoint table; every operation in the contract must be answered. */
 export type EndpointHandlers = { readonly [K in keyof EndpointMap]: EndpointHandler<K> }
@@ -67,29 +71,6 @@ function failureEnvelope(rpcId: string, code: TransportFailureCode, message: str
 }
 
 /**
- * The request's cancellation token, if it is one the host's own APIs can use.
- *
- * Handlers do not merely observe this signal, they hand it back to the host:
- * `list` forwards it into `persistence.list()`, which calls
- * `signal.throwIfAborted()` on it. That method arrived in Node 17.3, so on an
- * older runtime the property is there and the method is not, and forwarding
- * turns the call into `TypeError: signal?.throwIfAborted is not a function` —
- * an entire operation lost to a feature nobody asked for.
- *
- * Cancellation is an optimization and never a correctness requirement, so an
- * unusable token is dropped rather than passed on. The cost is a listing that
- * cannot be abandoned early; the alternative is an archive area that will not
- * open at all.
- *
- * The question is settled here, once, because this module already owns
- * everything about the wire — every handler below it should receive either a
- * signal it can use or nothing, and never have to ask which it got.
- */
-function usableSignal(signal: AbortSignal | undefined): AbortSignal | undefined {
-  return typeof signal?.throwIfAborted === 'function' ? signal : undefined
-}
-
-/**
  * Mount every contract endpoint as an exact `/api` route on the caller's fiber.
  *
  * Registration goes through `ctx.effect`, so plugin unload removes the routes.
@@ -126,7 +107,7 @@ export function registerEndpoints(ctx: Context, handlers: EndpointHandlers): voi
           )
         }
         try {
-          return successEnvelope(envelope.rpcId, await handler(envelope.payload, usableSignal(request.signal)))
+          return successEnvelope(envelope.rpcId, await handler(envelope.payload))
         } catch (error) {
           ctx.logger.warn(`session-archive: endpoint ${method} failed: ${describeError(error)}`)
           return failureEnvelope(envelope.rpcId, TRANSPORT_FAILURE.handlerFailed, describeError(error))

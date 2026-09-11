@@ -89,28 +89,23 @@ describe('the endpoint router', () => {
     expect([...routes.keys()].sort()).toEqual(OPERATIONS.map(endpointPath).sort())
   })
 
-  it('forwards a cancellation token the host can actually use', async () => {
-    const real = new AbortController().signal
-    let seen: AbortSignal | undefined | 'unset' = 'unset'
-    const { body } = await callList(real, async (_payload, signal) => {
-      seen = signal
-      return EMPTY_LISTING
-    })
-    expect(seen).toBe(real)
-    expect(body.result.ok).toBe(true)
-  })
-
   it.each([
-    ['a signal from a runtime without throwIfAborted', { aborted: false, addEventListener() {} }],
-    ['a signal that is not a signal at all', {}],
-    ['no signal', undefined],
-  ])('withholds %s rather than handing on something unusable', async (_name, signal) => {
-    let seen: AbortSignal | undefined | 'unset' = 'unset'
-    const { body } = await callList(signal, async (_payload, given) => {
-      seen = given
+    ['a perfectly good one', new AbortController().signal],
+    ['one from a runtime without throwIfAborted', { aborted: false, addEventListener() {} }],
+    ['nothing that resembles a signal', {}],
+    ['no signal at all', undefined],
+  ])('hands the handler only the payload, given %s', async (_name, signal) => {
+    // Handlers take one argument, so a token cannot reach a host read even by
+    // accident. That is the point: where the backend wants a cancellation
+    // token, and whether it wants it positionally or wrapped, moved between
+    // DSH versions, and an options object reaching the older positional
+    // `list(signal)` is what once made the archive area refuse to open.
+    let seen: readonly unknown[] = ['unset']
+    const { body } = await callList(signal, async (...args) => {
+      seen = args
       return EMPTY_LISTING
     })
-    expect(seen).toBeUndefined()
+    expect(seen).toHaveLength(1)
     expect(body.result.ok).toBe(true)
   })
 

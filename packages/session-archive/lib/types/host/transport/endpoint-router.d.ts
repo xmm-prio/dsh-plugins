@@ -15,10 +15,17 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { EndpointMap, ResponseOf } from '../../contract.js';
 /**
  * One endpoint implementation. The payload arrives untyped, straight off the
- * wire, and the signal is absent whenever the request did not come with one
- * this host can use — see {@link usableSignal}.
+ * wire.
+ *
+ * The request's cancellation token is deliberately not handed on. Every
+ * operation ends in a host read, and where those take a token — or whether
+ * they take one positionally or in an options object — varies by DSH version;
+ * see `PersistenceLike` in `host/internals/jsonl-backend.ts` for what guessing
+ * wrong costs. Cancellation is an optimization these short reads can do
+ * without, so the token stops here rather than being threaded through three
+ * layers to a call that may not want it.
  */
-export type EndpointHandler<K extends keyof EndpointMap> = (payload: unknown, signal: AbortSignal | undefined) => Promise<ResponseOf<K>>;
+export type EndpointHandler<K extends keyof EndpointMap> = (payload: unknown) => Promise<ResponseOf<K>>;
 /** The complete endpoint table; every operation in the contract must be answered. */
 export type EndpointHandlers = {
     readonly [K in keyof EndpointMap]: EndpointHandler<K>;

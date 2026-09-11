@@ -73,6 +73,16 @@ JSONL 后端的 `resolveCurrentLog` 对旧版格式的日志返回 `undefined`�
 
 投影缓存缺失是另一种、程度轻得多的降级：目录读得到，只是标题和活动时间取不到，界面照常列出会话并在脚注注明。
 
+### 不向后端传取消参数
+
+后端读接口的取消参数在 DSH 版本之间**换过位置**：`list` 早先是位置参数 `list(signal)`，后来改成 `list({ signal })`；即便在同一个版本里，`resolveCurrentLog(id, signal)` 是位置参数，`stat(id, { signal })` 却是选项对象。运行期分辨不出对面是哪一种。
+
+传错不是少了个优化，是直接抛：选项对象喂给老的 `list(signal)`，那个 `{}` 是**真值**但没有 `throwIfAborted` 方法，后端自己的 `signal?.throwIfAborted()` 就报 "not a function"，整个归档区打不开。本包确实这样炸过一次。
+
+**不传**是所有版本都接受的唯一调用形态，而取消对这几个短读来说本就是可有可无的优化——没人等的结果丢掉就是了。所以 `PersistenceLike` 里这几个方法的签名**根本不声明**取消参数，由编译器挡住下一个想传的人；`tests/backend-call-shape.test.ts` 再从运行期钉一遍实际传参，并拿一个仿造的老 `list(signal)` 验证确实不会抛。
+
+同样的理由，端点处理器只接收 payload：请求自带的取消令牌到传输层为止，不往下穿三层去喂一个可能不想要它的调用。
+
 ## 结构
 
 ```text

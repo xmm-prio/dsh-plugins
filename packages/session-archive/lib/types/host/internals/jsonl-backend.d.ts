@@ -28,14 +28,29 @@ export interface PersistenceLike {
     readonly config?: {
         readonly root?: unknown;
     };
-    list(options?: {
-        signal?: AbortSignal;
-    }): Promise<readonly PersistenceSnapshot[]>;
-    stat(id: string, options?: {
-        signal?: AbortSignal;
-    }): Promise<PersistenceSnapshot | undefined>;
+    /**
+     * Every read below is declared *without* the cancellation argument the
+     * backend also accepts, and that omission is load-bearing.
+     *
+     * Where the token goes is not stable across DSH versions. `list` took it
+     * positionally as `list(signal)` and now takes `list({ signal })`; within
+     * one version `resolveCurrentLog(id, signal)` is positional while
+     * `stat(id, { signal })` is not. Passing the wrong shape is not a missed
+     * optimization but a thrown error: an options object handed to the older
+     * `list` is a truthy non-signal, and the backend's own `signal?.
+     * throwIfAborted()` then fails with "not a function" — which is how the
+     * archive area once refused to open against an older host.
+     *
+     * Omitting the argument is the one call shape every version accepts, and
+     * cancellation is an optimization this plugin can afford to lose: these are
+     * short reads whose results are discarded if nobody is waiting. So the
+     * parameter is absent from the type, not merely unused, and the compiler is
+     * what keeps a future caller from reaching for it again.
+     */
+    list(): Promise<readonly PersistenceSnapshot[]>;
+    stat(id: string): Promise<PersistenceSnapshot | undefined>;
     open(id: string, access: 'read' | 'write', options?: unknown): Promise<unknown>;
-    resolveCurrentLog?(id: string, signal?: AbortSignal): Promise<string | undefined>;
+    resolveCurrentLog?(id: string): Promise<string | undefined>;
 }
 /** One session snapshot as the backend reports it. `eventCount` is never filled by JSONL. */
 export interface PersistenceSnapshot {
@@ -146,10 +161,9 @@ export declare function probeDeletableBackend(persistence: PersistenceLike): {
  * @param persistence - the mounted persistence service.
  * @param sessionId - the session to locate; assumed already validated.
  * @param root - the session log root, as established at mount.
- * @param signal - caller cancellation.
  * @returns where the directory is, or why there is none to remove.
  */
-export declare function locateSessionLog(persistence: PersistenceLike, sessionId: string, root: SessionRoot, signal?: AbortSignal): Promise<LogLocation>;
+export declare function locateSessionLog(persistence: PersistenceLike, sessionId: string, root: SessionRoot): Promise<LogLocation>;
 /**
  * Establish that a self-derived directory really is one session's log directory.
  *

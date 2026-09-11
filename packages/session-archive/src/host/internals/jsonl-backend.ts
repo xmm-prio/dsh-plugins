@@ -40,10 +40,29 @@ export interface PersistenceLike {
    * session log root is.
    */
   readonly config?: { readonly root?: unknown }
-  list(options?: { signal?: AbortSignal }): Promise<readonly PersistenceSnapshot[]>
-  stat(id: string, options?: { signal?: AbortSignal }): Promise<PersistenceSnapshot | undefined>
+  /**
+   * Every read below is declared *without* the cancellation argument the
+   * backend also accepts, and that omission is load-bearing.
+   *
+   * Where the token goes is not stable across DSH versions. `list` took it
+   * positionally as `list(signal)` and now takes `list({ signal })`; within
+   * one version `resolveCurrentLog(id, signal)` is positional while
+   * `stat(id, { signal })` is not. Passing the wrong shape is not a missed
+   * optimization but a thrown error: an options object handed to the older
+   * `list` is a truthy non-signal, and the backend's own `signal?.
+   * throwIfAborted()` then fails with "not a function" — which is how the
+   * archive area once refused to open against an older host.
+   *
+   * Omitting the argument is the one call shape every version accepts, and
+   * cancellation is an optimization this plugin can afford to lose: these are
+   * short reads whose results are discarded if nobody is waiting. So the
+   * parameter is absent from the type, not merely unused, and the compiler is
+   * what keeps a future caller from reaching for it again.
+   */
+  list(): Promise<readonly PersistenceSnapshot[]>
+  stat(id: string): Promise<PersistenceSnapshot | undefined>
   open(id: string, access: 'read' | 'write', options?: unknown): Promise<unknown>
-  resolveCurrentLog?(id: string, signal?: AbortSignal): Promise<string | undefined>
+  resolveCurrentLog?(id: string): Promise<string | undefined>
 }
 
 /** One session snapshot as the backend reports it. `eventCount` is never filled by JSONL. */
@@ -173,19 +192,17 @@ function unsupportedFormatPath(error: unknown): string | undefined {
  * @param persistence - the mounted persistence service.
  * @param sessionId - the session to locate; assumed already validated.
  * @param root - the session log root, as established at mount.
- * @param signal - caller cancellation.
  * @returns where the directory is, or why there is none to remove.
  */
 export async function locateSessionLog(
   persistence: PersistenceLike,
   sessionId: string,
   root: SessionRoot,
-  signal?: AbortSignal,
 ): Promise<LogLocation> {
   const resolveLog = persistence.resolveCurrentLog
   if (typeof resolveLog === 'function') {
     try {
-      const path = await resolveLog.call(persistence, sessionId, signal)
+      const path = await resolveLog.call(persistence, sessionId)
       if (path !== undefined) return { kind: 'current', dir: dirname(path) }
     } catch (error) {
       if (!isFormatUnsupportedError(error)) throw error
@@ -195,11 +212,11 @@ export async function locateSessionLog(
     }
   }
 
-  const materialized = (await persistence.stat(sessionId, signal === undefined ? {} : { signal })) !== undefined
+  const materialized = (await persistence.stat(sessionId)) !== undefined
   if (!materialized) return { kind: 'absent' }
 
   if (!root.known) return { kind: 'root-unknown', reason: root.reason }
-  const candidates = await findSessionDirs(root.path, sessionId, signal)
+  const candidates = await findSessionDirs(root.path, sessionId)
   if (candidates.length === 0) return { kind: 'not-found', root: root.path }
   if (candidates.length > 1) return { kind: 'ambiguous', dirs: candidates }
   return { kind: 'derived', dir: candidates[0]!, root: root.path }
@@ -216,10 +233,9 @@ export async function locateSessionLog(
  *
  * @param root - the session log root.
  * @param sessionId - the session to find; assumed already validated.
- * @param signal - caller cancellation.
  * @returns every absolute candidate directory, in project order.
  */
-async function findSessionDirs(root: string, sessionId: string, signal?: AbortSignal): Promise<string[]> {
+async function findSessionDirs(root: string, sessionId: string): Promise<string[]> {
   let projects: string[]
   try {
     projects = (await readdir(root, { withFileTypes: true }))
@@ -231,7 +247,6 @@ async function findSessionDirs(root: string, sessionId: string, signal?: AbortSi
 
   const found: string[] = []
   for (const project of projects) {
-    signal?.throwIfAborted()
     const candidate = join(root, project, sessionId)
     try {
       if ((await stat(candidate)).isDirectory()) found.push(candidate)
