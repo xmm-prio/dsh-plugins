@@ -1908,6 +1908,9 @@ function successEnvelope(rpcId, value) {
 function failureEnvelope(rpcId, code, message) {
   return Response.json({ type: "server-response", rpcId, result: { ok: false, error: { code, message, details: {} } } });
 }
+function usableSignal(signal) {
+  return typeof signal?.throwIfAborted === "function" ? signal : void 0;
+}
 function registerEndpoints(ctx, handlers) {
   for (const operation of OPERATIONS) {
     const method = endpointName(operation);
@@ -1935,7 +1938,7 @@ function registerEndpoints(ctx, handlers) {
           );
         }
         try {
-          return successEnvelope(envelope.rpcId, await handler(envelope.payload, request.signal));
+          return successEnvelope(envelope.rpcId, await handler(envelope.payload, usableSignal(request.signal)));
         } catch (error) {
           ctx.logger.warn(`session-archive: endpoint ${method} failed: ${describeError(error)}`);
           return failureEnvelope(envelope.rpcId, TRANSPORT_FAILURE.handlerFailed, describeError(error));

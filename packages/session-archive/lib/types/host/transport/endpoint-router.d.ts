@@ -13,8 +13,12 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import type { EndpointMap, ResponseOf } from '../../contract.js';
-/** One endpoint implementation. The payload arrives untyped, straight off the wire. */
-export type EndpointHandler<K extends keyof EndpointMap> = (payload: unknown, signal: AbortSignal) => Promise<ResponseOf<K>>;
+/**
+ * One endpoint implementation. The payload arrives untyped, straight off the
+ * wire, and the signal is absent whenever the request did not come with one
+ * this host can use — see {@link usableSignal}.
+ */
+export type EndpointHandler<K extends keyof EndpointMap> = (payload: unknown, signal: AbortSignal | undefined) => Promise<ResponseOf<K>>;
 /** The complete endpoint table; every operation in the contract must be answered. */
 export type EndpointHandlers = {
     readonly [K in keyof EndpointMap]: EndpointHandler<K>;
