@@ -22,6 +22,8 @@ dsh plugin --profile web add "github:xmm-prio/dsh-plugins#path:/packages/session
 
 引号不能省：`&` 在多数 shell 里会被当成命令分隔符。
 
+升级到最新用 `dsh plugin --profile web update "@dsh-plugins/session-archive"`——参数是包名而不是 git 地址；装的时候没钉 ref 就重新拉分支最新 commit，钉了则要改用 `add` 换新 ref。**更新后需重启 DSH**，宿主侧与浏览器侧都只在启动时加载。
+
 卸载用 `dsh plugin --profile web remove @dsh-plugins/session-archive`。
 
 ## 配置

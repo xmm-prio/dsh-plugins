@@ -20,6 +20,14 @@ dsh plugin --profile web add "github:xmm-prio/dsh-plugins#path:/packages/session
 
 `--profile` 是必填项，`web` 换成你自己的 profile 名即可。引号照抄：钉分支或 commit 的写法（`#<ref>&path:/...`）里会出现 `&`，多数 shell 会把它当成命令分隔符。
 
+升级到最新：
+
+```bash
+dsh plugin --profile web update "@dsh-plugins/session-archive"
+```
+
+这里用**包名**，不是安装时那个 git 地址。装的时候没钉 ref，`update` 就重新拉分支最新的 commit；钉了的话得改用 `add` 换新 ref。**更新后要重启 DSH**——插件的宿主侧和浏览器侧都是启动时加载的，不重启看到的还是旧版本。
+
 卸载：
 
 ```bash
