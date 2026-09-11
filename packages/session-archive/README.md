@@ -92,6 +92,8 @@ src/
     ├── transport/
     │   └── archive-api.ts   # 浏览器侧唯一处理信封的模块
     ├── panel/               # 归档区
+    │   ├── panel.css        # 归档区的全部样式
+    │   └── stylesheet.ts    # 注入样式并登记类名，唯一一处
     ├── sidebar/             # 侧栏行内按钮
     │   ├── adapter.ts       # 唯一识别内置侧栏 DOM 与 fiber 的地方，带版本号
     │   ├── row-buttons.ts   # 注入、幂等重扫、kill-switch
@@ -100,6 +102,20 @@ src/
 ```
 
 `host/internals/` 下的三个模块各自封死一处宿主私有形状，`client/sidebar/adapter.ts` 封死侧栏的 DOM 与 fiber 形状。宿主哪天改了对应实现，需要改的正好是一个文件。
+
+## 外观
+
+归档区跟着 DSH 的设计走，不自带一套视觉语言：
+
+- **颜色全部是 `--dsw-*` 主题变量**，没有一个字面色值，所以深浅色主题自动跟随，宿主换主题也不需要本包改动。
+- **尺寸取自 DSH 自己同类界面的实测值**：行高 34px 与侧栏工作区行一致，行圆角 8px，元数据 11px 用 `label-tertiary`，分隔线 0.5px 用 `border-l3`，分组标题 12px/500 sticky——与模型选择列表的分组标题同一套。
+- **图标来自 `@deepseek-ai/dsh-client-ui-primitives`**，不自绘。
+
+弹窗用 `headless` 模式打开。宿主 `Modal` 的默认外壳是一张确认卡：固定 380px 宽、没有最大高度，内容超出视口就只是够不着而不是滚动。`headless` 把卡片内部整个交出来，宿主仍然保留遮罩、Escape 与 `role="dialog"`，面板因此**完整拥有自己的布局**——头部、工具栏、滚动中段、页脚各自固定，而不是去和一套为别的用途设计的外壳较劲。
+
+样式是一份真正的 `.css`，由 esbuild 以 `text` loader 打进 bundle，在模块顶层注入一个 `<style>`。这不是取巧：DSH 的客户端模块加载器会把**尚未打标的 `<style>` 认领给刚刚实例化的插件**，并在插件卸载时一并移除，第一方插件的 CSS 走的就是这条路。因此样式的生命周期与插件完全一致，不需要本包自己管回收。
+
+类名带 `dsh-archive-` 前缀。宿主的样式是哈希过的 CSS Modules，两边不可能撞车，本包也不选中宿主的任何类。
 
 ## 通道
 

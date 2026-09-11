@@ -102,11 +102,18 @@ async function closePanel() {
   await panel.waitFor({ state: 'detached', timeout: 10_000 }).catch(() => {})
 }
 
-/** Tick the checkbox of every archive-area row whose text mentions `needle`. */
-async function selectEntries(needle) {
-  const rows = panel.locator('li').filter({ hasText: needle })
-  const count = await rows.count()
-  for (let index = 0; index < count; index += 1) await rows.nth(index).locator('input[type="checkbox"]').check()
+/**
+ * Tick every archive-area checkbox under one workspace group.
+ *
+ * Rows are addressed by the group heading above them rather than by a string
+ * they happen to contain. A row shows a title and three metadata fields and
+ * nothing else, so which workspace a session came from is only answerable
+ * from the section around it — which is also the question the user asks.
+ */
+async function selectEntries(groupLabel) {
+  const boxes = panel.locator('section').filter({ hasText: groupLabel }).first().locator('li input[type="checkbox"]')
+  const count = await boxes.count()
+  for (let index = 0; index < count; index += 1) await boxes.nth(index).check()
   return count
 }
 
@@ -123,17 +130,22 @@ const panelGroups = () =>
       })),
   )
 
-/** The scroll box the list lives in, so the Modal's fixed card cannot trap rows again. */
+/**
+ * The scroll box the list lives in, so the card cannot trap rows again.
+ *
+ * Found by what the browser resolved rather than by an inline `style`
+ * attribute: the panel's looks come from a stylesheet, and pinning the test to
+ * how a rule was delivered would fail the next time it moves.
+ */
 const listViewport = () =>
   page.evaluate(() => {
-    const box = [...document.querySelectorAll('[role="dialog"] div')].find(
-      (element) => element.style.overflowY === 'auto',
+    const box = [...document.querySelectorAll('[role="dialog"] *')].find(
+      (element) => getComputedStyle(element).overflowY === 'auto',
     )
     if (box === undefined) return null
-    const style = getComputedStyle(box)
     return {
-      maxHeight: style.maxHeight,
-      overflowY: style.overflowY,
+      height: getComputedStyle(box).height,
+      overflowY: getComputedStyle(box).overflowY,
       scrolls: box.scrollHeight > box.clientHeight,
       withinViewport: box.getBoundingClientRect().bottom <= window.innerHeight + 1,
     }
@@ -327,7 +339,7 @@ try {
 
   const scrollBox = await listViewport()
   check(
-    '09 · the list still bounds itself inside the host’s fixed-size Modal',
+    '09 · the list scrolls inside the card and never runs past the viewport',
     scrollBox !== null && scrollBox.overflowY === 'auto' && scrollBox.scrolls && scrollBox.withinViewport,
     JSON.stringify(scrollBox),
   )
@@ -394,7 +406,7 @@ try {
   // Unarchive must put the sessions back where they came from.
   const ledgerBefore = beforeCancel.workspaces.find((workspace) => workspace.workspaceId === alpha.workspaceId).sessionIds
   await panel.getByRole('button', { name: '取消选择' }).click()
-  const picked = await selectEntries(alpha.path)
+  const picked = await selectEntries('工作区 Alpha')
   const pickedLabel = await selectionLabel()
   await panel.getByRole('button', { name: '取消归档', exact: true }).click()
   await page.waitForTimeout(3000)
@@ -427,7 +439,7 @@ try {
 
   // Delete, for real this time.
   await openPanel()
-  const doomed = await selectEntries(beta.path)
+  const doomed = await selectEntries('未命名工作区')
   await panel.getByRole('button', { name: '删除', exact: true }).click()
   await confirmation.waitFor({ timeout: 10_000 })
   await confirmation.locator('input[type="checkbox"]').check()

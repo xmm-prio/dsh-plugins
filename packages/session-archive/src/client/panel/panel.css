@@ -1,0 +1,337 @@
+/*
+ * The archive area's looks.
+ *
+ * Every colour, and every value that has a host equivalent, is a `--dsw-*`
+ * theme variable rather than a literal, so the panel follows DSH's light and
+ * dark themes without knowing either exists. The measurements are the ones
+ * DSH uses for the same jobs: 34px/32px sidebar rows, 8px row radius, 12px
+ * tertiary metadata, and .5px `border-l3` dividers around a scrolling middle.
+ *
+ * Class names carry a `dsh-archive-` prefix because this stylesheet is global.
+ * The host's own styles are CSS modules with hashed names, so nothing here can
+ * collide with them, and nothing here targets them.
+ */
+
+/* ─────────────────────────────────────────────────────────── the card itself */
+
+/*
+ * Applied to the host `Modal`'s dialog through `className`, which is the only
+ * supported way to resize it. The three overrides undo defaults meant for a
+ * confirmation card: 380px wide, no height, and a bottom padding plus a 20px
+ * gap that a full-bleed header and footer must not inherit.
+ */
+.dsh-archive-panel {
+  width: min(680px, 100%);
+  height: min(600px, 100dvh - 48px);
+  gap: 0;
+  padding: 0;
+}
+
+/* ──────────────────────────────────────────────────────────────────── header */
+
+.dsh-archive-head {
+  display: flex;
+  flex: none;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 22px 14px 0 24px;
+}
+
+.dsh-archive-heading {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dsh-archive-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 24px;
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-archive-subtitle {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* Same box as the host's own modal close button, so the corner looks stock. */
+.dsh-archive-close {
+  display: inline-flex;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+
+.dsh-archive-close:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+/* ─────────────────────────────────────────────────────────────────── toolbar */
+
+.dsh-archive-toolbar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 24px 12px;
+}
+
+.dsh-archive-search {
+  min-width: 0;
+  flex: 1;
+}
+
+/* ────────────────────────────────────────────────────────── the scrolling list */
+
+/*
+ * The only scroll container. Its `flex: 1; min-height: 0` is what keeps the
+ * rows inside the card: the host's dialog is `overflow: hidden`, so a list
+ * that sized itself to its content would simply be out of reach.
+ */
+.dsh-archive-list {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 16px 8px 24px;
+  border-top: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+.dsh-archive-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dsh-archive-list::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 4px;
+  background: var(--dsw-alias-scrollbar-bg-l2);
+  background-clip: padding-box;
+}
+
+.dsh-archive-list::-webkit-scrollbar-thumb:hover {
+  background: var(--dsw-alias-scrollbar-hover-l2);
+  background-clip: padding-box;
+}
+
+.dsh-archive-group + .dsh-archive-group {
+  margin-top: 6px;
+}
+
+/*
+ * Sticky, so the workspace a row belongs to stays readable while scrolling.
+ * The opaque background is the dialog's own fill; without it the rows would
+ * show through.
+ */
+.dsh-archive-group-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 4px;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+.dsh-archive-group-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--dsw-alias-label-caption);
+}
+
+.dsh-archive-group-name {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.dsh-archive-group-count {
+  flex: none;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-caption);
+  font-variant-numeric: tabular-nums;
+}
+
+.dsh-archive-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dsh-archive-row {
+  border-radius: 8px;
+}
+
+.dsh-archive-row:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.dsh-archive-row[data-selected='true'] {
+  background: var(--dsw-alias-interactive-bg-active, var(--dsw-alias-interactive-bg-hover));
+}
+
+/*
+ * The whole row toggles, so the checkbox is a target rather than the target.
+ * One line, at the sidebar's own 34px: the title takes the room it needs and
+ * the metadata sits against the right edge, which is how every other DSH list
+ * arranges the same pair.
+ */
+.dsh-archive-row-label {
+  display: flex;
+  min-height: 34px;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.dsh-archive-check {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin: 0;
+  accent-color: var(--dsw-alias-button-primary-fill);
+  cursor: pointer;
+}
+
+.dsh-archive-row-title {
+  overflow: hidden;
+  min-width: 0;
+  flex: 1;
+  font-size: 14px;
+  line-height: 20px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--dsw-alias-label-primary);
+}
+
+.dsh-archive-row-meta {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.dsh-archive-row-meta > .dsh-archive-sep {
+  color: var(--dsw-alias-label-dimmed);
+}
+
+/* ───────────────────────────────────────────────── notices, status and footer */
+
+.dsh-archive-notices {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 24px 0;
+}
+
+.dsh-archive-notice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dsh-archive-notice-subject {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-caption);
+}
+
+.dsh-archive-status {
+  flex: none;
+  padding: 10px 24px 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dsh-archive-status[data-tone='failed'] {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.dsh-archive-empty {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 0;
+  padding: 24px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-tertiary);
+  border-top: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+.dsh-archive-foot {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 24px;
+  border-top: 0.5px solid var(--dsw-alias-border-l3);
+}
+
+.dsh-archive-foot-info {
+  display: flex;
+  overflow: hidden;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  color: var(--dsw-alias-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.dsh-archive-foot-info > .dsh-archive-sep {
+  color: var(--dsw-alias-label-dimmed);
+}
+
+/* The line that names the backend; developer information, kept at a whisper. */
+.dsh-archive-provenance {
+  overflow: hidden;
+  flex: none;
+  margin: 0;
+  padding: 8px 24px 0;
+  font-size: 11px;
+  line-height: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--dsw-alias-label-caption);
+}

@@ -82,6 +82,10 @@ await build({
   format: 'cjs',
   jsx: 'automatic',
   jsxImportSource: 'react',
+  // The panel's stylesheet rides along as a string and is injected at module
+  // scope. esbuild's default `css` loader would emit a second output file, and
+  // the ModuleLoader only ever fetches the one bundle.
+  loader: { '.css': 'text' },
   external: browserExternal,
   banner: { js: banner },
   footer: { js: 'return module.exports; } });' },

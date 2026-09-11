@@ -269,30 +269,84 @@ function createArchiveApi(ctx) {
 var import_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
 var import_react = require("react");
 var import_jsx_runtime = require("react/jsx-runtime");
-function ShutdownAll({ api, enabled }) {
+function ShutdownAll({
+  api,
+  enabled,
+  icon,
+  onReport
+}) {
   const [busy, setBusy] = (0, import_react.useState)(false);
-  const [message, setMessage] = (0, import_react.useState)(void 0);
   const shutdown = (0, import_react.useCallback)(async () => {
     if (busy) return;
     setBusy(true);
     const outcome = await api.shutdownAll({});
     setBusy(false);
     if (!outcome.ok) {
-      setMessage(callFailureText(outcome));
+      onReport(callFailureText(outcome));
       return;
     }
     const failures = outcome.value.outcomes.filter((item) => !item.ok);
-    setMessage(
+    onReport(
       outcome.value.outcomes.length === 0 ? text.nothingRunning : [
         text.shutdownCount(outcome.value.outcomes.length - failures.length),
         ...failures.length > 0 ? [text.partialFailure(failures.length)] : []
       ].join("\uFF1B")
     );
-  }, [api, busy]);
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("section", { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_dsh_client_ui_primitives.Button, { variant: "outline", size: "sm", disabled: busy || !enabled, onClick: () => void shutdown(), children: text.shutdownAll }),
-    message === void 0 ? null : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { children: message })
-  ] });
+  }, [api, busy, onReport]);
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+    import_dsh_client_ui_primitives.Button,
+    {
+      variant: "ghost",
+      size: "sm",
+      icon,
+      "aria-label": text.shutdownAll,
+      title: text.shutdownAll,
+      disabled: busy || !enabled,
+      onClick: () => void shutdown()
+    }
+  );
+}
+
+// src/client/panel/panel.css
+var panel_default = "/*\r\n * The archive area's looks.\r\n *\r\n * Every colour, and every value that has a host equivalent, is a `--dsw-*`\r\n * theme variable rather than a literal, so the panel follows DSH's light and\r\n * dark themes without knowing either exists. The measurements are the ones\r\n * DSH uses for the same jobs: 34px/32px sidebar rows, 8px row radius, 12px\r\n * tertiary metadata, and .5px `border-l3` dividers around a scrolling middle.\r\n *\r\n * Class names carry a `dsh-archive-` prefix because this stylesheet is global.\r\n * The host's own styles are CSS modules with hashed names, so nothing here can\r\n * collide with them, and nothing here targets them.\r\n */\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 the card itself */\r\n\r\n/*\r\n * Applied to the host `Modal`'s dialog through `className`, which is the only\r\n * supported way to resize it. The three overrides undo defaults meant for a\r\n * confirmation card: 380px wide, no height, and a bottom padding plus a 20px\r\n * gap that a full-bleed header and footer must not inherit.\r\n */\r\n.dsh-archive-panel {\r\n  width: min(680px, 100%);\r\n  height: min(600px, 100dvh - 48px);\r\n  gap: 0;\r\n  padding: 0;\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 header */\r\n\r\n.dsh-archive-head {\r\n  display: flex;\r\n  flex: none;\r\n  align-items: flex-start;\r\n  justify-content: space-between;\r\n  gap: 8px;\r\n  padding: 22px 14px 0 24px;\r\n}\r\n\r\n.dsh-archive-heading {\r\n  display: flex;\r\n  min-width: 0;\r\n  flex-direction: column;\r\n  gap: 4px;\r\n}\r\n\r\n.dsh-archive-title {\r\n  margin: 0;\r\n  font-size: 16px;\r\n  font-weight: 500;\r\n  line-height: 24px;\r\n  color: var(--dsw-alias-label-primary);\r\n}\r\n\r\n.dsh-archive-subtitle {\r\n  margin: 0;\r\n  font-size: 13px;\r\n  line-height: 20px;\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n/* Same box as the host's own modal close button, so the corner looks stock. */\r\n.dsh-archive-close {\r\n  display: inline-flex;\r\n  flex: none;\r\n  width: 28px;\r\n  height: 28px;\r\n  align-items: center;\r\n  justify-content: center;\r\n  border: none;\r\n  border-radius: 8px;\r\n  background: transparent;\r\n  color: var(--dsw-alias-label-secondary);\r\n  cursor: pointer;\r\n}\r\n\r\n.dsh-archive-close:hover {\r\n  background: var(--dsw-alias-interactive-bg-hover);\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 toolbar */\r\n\r\n.dsh-archive-toolbar {\r\n  display: flex;\r\n  flex: none;\r\n  align-items: center;\r\n  gap: 8px;\r\n  padding: 14px 24px 12px;\r\n}\r\n\r\n.dsh-archive-search {\r\n  min-width: 0;\r\n  flex: 1;\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 the scrolling list */\r\n\r\n/*\r\n * The only scroll container. Its `flex: 1; min-height: 0` is what keeps the\r\n * rows inside the card: the host's dialog is `overflow: hidden`, so a list\r\n * that sized itself to its content would simply be out of reach.\r\n */\r\n.dsh-archive-list {\r\n  min-height: 0;\r\n  flex: 1;\r\n  overflow-y: auto;\r\n  padding: 4px 16px 8px 24px;\r\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\r\n}\r\n\r\n.dsh-archive-list::-webkit-scrollbar {\r\n  width: 8px;\r\n}\r\n\r\n.dsh-archive-list::-webkit-scrollbar-thumb {\r\n  border: 2px solid transparent;\r\n  border-radius: 4px;\r\n  background: var(--dsw-alias-scrollbar-bg-l2);\r\n  background-clip: padding-box;\r\n}\r\n\r\n.dsh-archive-list::-webkit-scrollbar-thumb:hover {\r\n  background: var(--dsw-alias-scrollbar-hover-l2);\r\n  background-clip: padding-box;\r\n}\r\n\r\n.dsh-archive-group + .dsh-archive-group {\r\n  margin-top: 6px;\r\n}\r\n\r\n/*\r\n * Sticky, so the workspace a row belongs to stays readable while scrolling.\r\n * The opaque background is the dialog's own fill; without it the rows would\r\n * show through.\r\n */\r\n.dsh-archive-group-head {\r\n  position: sticky;\r\n  top: 0;\r\n  z-index: 1;\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 6px;\r\n  padding: 6px 8px 4px;\r\n  background: var(--dsw-alias-bg-layer-2);\r\n}\r\n\r\n.dsh-archive-group-icon {\r\n  display: inline-flex;\r\n  flex: none;\r\n  color: var(--dsw-alias-label-caption);\r\n}\r\n\r\n.dsh-archive-group-name {\r\n  overflow: hidden;\r\n  font-size: 12px;\r\n  font-weight: 500;\r\n  line-height: 18px;\r\n  white-space: nowrap;\r\n  text-overflow: ellipsis;\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n.dsh-archive-group-count {\r\n  flex: none;\r\n  font-size: 11px;\r\n  line-height: 18px;\r\n  color: var(--dsw-alias-label-caption);\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n\r\n.dsh-archive-rows {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 1px;\r\n  margin: 0;\r\n  padding: 0;\r\n  list-style: none;\r\n}\r\n\r\n.dsh-archive-row {\r\n  border-radius: 8px;\r\n}\r\n\r\n.dsh-archive-row:hover {\r\n  background: var(--dsw-alias-interactive-bg-hover);\r\n}\r\n\r\n.dsh-archive-row[data-selected='true'] {\r\n  background: var(--dsw-alias-interactive-bg-active, var(--dsw-alias-interactive-bg-hover));\r\n}\r\n\r\n/*\r\n * The whole row toggles, so the checkbox is a target rather than the target.\r\n * One line, at the sidebar's own 34px: the title takes the room it needs and\r\n * the metadata sits against the right edge, which is how every other DSH list\r\n * arranges the same pair.\r\n */\r\n.dsh-archive-row-label {\r\n  display: flex;\r\n  min-height: 34px;\r\n  box-sizing: border-box;\r\n  align-items: center;\r\n  gap: 10px;\r\n  padding: 4px 8px;\r\n  cursor: pointer;\r\n}\r\n\r\n.dsh-archive-check {\r\n  width: 14px;\r\n  height: 14px;\r\n  flex: none;\r\n  margin: 0;\r\n  accent-color: var(--dsw-alias-button-primary-fill);\r\n  cursor: pointer;\r\n}\r\n\r\n.dsh-archive-row-title {\r\n  overflow: hidden;\r\n  min-width: 0;\r\n  flex: 1;\r\n  font-size: 14px;\r\n  line-height: 20px;\r\n  white-space: nowrap;\r\n  text-overflow: ellipsis;\r\n  color: var(--dsw-alias-label-primary);\r\n}\r\n\r\n.dsh-archive-row-meta {\r\n  display: flex;\r\n  flex: none;\r\n  align-items: center;\r\n  gap: 6px;\r\n  font-size: 11px;\r\n  line-height: 16px;\r\n  white-space: nowrap;\r\n  color: var(--dsw-alias-label-tertiary);\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n\r\n.dsh-archive-row-meta > .dsh-archive-sep {\r\n  color: var(--dsw-alias-label-dimmed);\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 notices, status and footer */\r\n\r\n.dsh-archive-notices {\r\n  display: flex;\r\n  flex: none;\r\n  flex-direction: column;\r\n  gap: 4px;\r\n  padding: 12px 24px 0;\r\n}\r\n\r\n.dsh-archive-notice {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 6px;\r\n  font-size: 12px;\r\n  line-height: 18px;\r\n  color: var(--dsw-alias-label-secondary);\r\n}\r\n\r\n.dsh-archive-notice-subject {\r\n  overflow: hidden;\r\n  font-size: 11px;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n  color: var(--dsw-alias-label-caption);\r\n}\r\n\r\n.dsh-archive-status {\r\n  flex: none;\r\n  padding: 10px 24px 0;\r\n  font-size: 12px;\r\n  line-height: 18px;\r\n  color: var(--dsw-alias-label-secondary);\r\n}\r\n\r\n.dsh-archive-status[data-tone='failed'] {\r\n  color: var(--dsw-alias-state-error-primary);\r\n}\r\n\r\n.dsh-archive-empty {\r\n  display: flex;\r\n  min-height: 0;\r\n  flex: 1;\r\n  flex-wrap: wrap;\r\n  align-items: center;\r\n  justify-content: center;\r\n  gap: 12px;\r\n  margin: 0;\r\n  padding: 24px;\r\n  font-size: 13px;\r\n  line-height: 20px;\r\n  color: var(--dsw-alias-label-tertiary);\r\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\r\n}\r\n\r\n.dsh-archive-foot {\r\n  display: flex;\r\n  flex: none;\r\n  align-items: center;\r\n  gap: 8px;\r\n  padding: 14px 24px;\r\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\r\n}\r\n\r\n.dsh-archive-foot-info {\r\n  display: flex;\r\n  overflow: hidden;\r\n  align-items: center;\r\n  gap: 6px;\r\n  margin-right: auto;\r\n  font-size: 12px;\r\n  line-height: 18px;\r\n  white-space: nowrap;\r\n  color: var(--dsw-alias-label-tertiary);\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n\r\n.dsh-archive-foot-info > .dsh-archive-sep {\r\n  color: var(--dsw-alias-label-dimmed);\r\n}\r\n\r\n/* The line that names the backend; developer information, kept at a whisper. */\r\n.dsh-archive-provenance {\r\n  overflow: hidden;\r\n  flex: none;\r\n  margin: 0;\r\n  padding: 8px 24px 0;\r\n  font-size: 11px;\r\n  line-height: 18px;\r\n  white-space: nowrap;\r\n  text-overflow: ellipsis;\r\n  color: var(--dsw-alias-label-caption);\r\n}\r\n";
+
+// src/client/panel/stylesheet.ts
+var cls = {
+  panel: "dsh-archive-panel",
+  head: "dsh-archive-head",
+  heading: "dsh-archive-heading",
+  title: "dsh-archive-title",
+  subtitle: "dsh-archive-subtitle",
+  close: "dsh-archive-close",
+  toolbar: "dsh-archive-toolbar",
+  search: "dsh-archive-search",
+  list: "dsh-archive-list",
+  group: "dsh-archive-group",
+  groupHead: "dsh-archive-group-head",
+  groupIcon: "dsh-archive-group-icon",
+  groupName: "dsh-archive-group-name",
+  groupCount: "dsh-archive-group-count",
+  rows: "dsh-archive-rows",
+  row: "dsh-archive-row",
+  rowLabel: "dsh-archive-row-label",
+  check: "dsh-archive-check",
+  rowTitle: "dsh-archive-row-title",
+  rowMeta: "dsh-archive-row-meta",
+  separator: "dsh-archive-sep",
+  notices: "dsh-archive-notices",
+  notice: "dsh-archive-notice",
+  noticeSubject: "dsh-archive-notice-subject",
+  status: "dsh-archive-status",
+  empty: "dsh-archive-empty",
+  foot: "dsh-archive-foot",
+  footInfo: "dsh-archive-foot-info",
+  provenance: "dsh-archive-provenance"
+};
+if (typeof document !== "undefined") {
+  const style = document.createElement("style");
+  style.setAttribute("data-plugin-css", "@dsh-plugins/session-archive/panel");
+  style.textContent = panel_default;
+  document.head.append(style);
 }
 
 // src/client/panel/useArchive.ts
@@ -421,31 +475,47 @@ function useArchive(api, open, copy2) {
 
 // src/client/panel/ArchivePanel.tsx
 var import_jsx_runtime2 = require("react/jsx-runtime");
-var LIST_VIEWPORT = { maxHeight: "46vh", overflowY: "auto" };
 var copy = {
   describe: (outcome) => `${outcome.id}: ${failureText(outcome.code)}`,
   transport: callFailureText,
   unarchived: (count) => text.unarchivedCount(count),
   deleted: (count) => text.deletedCount(count)
 };
+function Separator() {
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: cls.separator, children: "\xB7" });
+}
 function createArchivePanel(ctx) {
   const api = createArchiveApi(ctx);
   return function ArchivePanel({ wide }) {
     const [open, setOpen] = (0, import_react3.useState)(false);
+    const close = (0, import_react3.useCallback)(() => {
+      setOpen(false);
+    }, []);
     const state = useArchive(api, open, copy);
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.Button, { variant: "ghost", size: "sm", onClick: () => setOpen(true), title: text.entryLabel, children: wide === false ? "\u5F52" : text.entryLabel }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-        import_dsh_client_ui_primitives2.Modal,
+        import_dsh_client_ui_primitives2.Button,
         {
-          open,
-          onClose: () => setOpen(false),
-          title: text.panelTitle,
-          closeLabel: text.close,
-          description: text.panelDescription,
-          children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ArchiveBody, { state })
+          variant: "ghost",
+          size: "sm",
+          icon: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.IconArchiveOutline20, { size: 16 }),
+          "aria-label": text.entryLabel,
+          onClick: () => {
+            setOpen(true);
+          },
+          children: wide === false ? void 0 : text.entryLabel
         }
-      )
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_dsh_client_ui_primitives2.Modal, { open, onClose: close, title: text.panelTitle, headless: true, className: cls.panel, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("header", { className: cls.head, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: cls.heading, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("h2", { className: cls.title, children: text.panelTitle }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: cls.subtitle, children: text.panelDescription })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: cls.close, "aria-label": text.close, onClick: close, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.IconCloseOutline16, { size: 14 }) })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ArchiveBody, { state })
+      ] })
     ] });
   };
 }
@@ -453,6 +523,7 @@ function ArchiveBody({ state }) {
   const [confirming, setConfirming] = (0, import_react3.useState)(false);
   const [acknowledged, setAcknowledged] = (0, import_react3.useState)(false);
   const [query, setQuery] = (0, import_react3.useState)("");
+  const [notice, setNotice] = (0, import_react3.useState)(void 0);
   const now = (0, import_react3.useMemo)(() => Date.now(), [state.listing]);
   const entries = state.listing?.entries ?? [];
   const view = (0, import_react3.useMemo)(() => buildArchiveView(entries, query), [entries, query]);
@@ -463,12 +534,15 @@ function ArchiveBody({ state }) {
   }, []);
   const confirmDelete = (0, import_react3.useCallback)(() => {
     closeConfirmation();
+    setNotice(void 0);
     void state.remove();
   }, [closeConfirmation, state]);
-  if (state.loading && state.listing === void 0) return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { children: text.loading });
+  if (state.listing === void 0 && state.loadError === void 0) {
+    return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: cls.empty, children: text.loading });
+  }
   if (state.loadError !== void 0) {
-    return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("p", { children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: cls.empty, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { children: [
         text.loadFailed,
         "\uFF1A",
         state.loadError
@@ -477,63 +551,98 @@ function ArchiveBody({ state }) {
     ] });
   }
   const selectedCount = state.selected.size;
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(CapabilityNotices, { state }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ShutdownAll, { api: state.api, enabled: available(state, "shutdown") }),
-    entries.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { children: text.empty }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          "input",
-          {
-            type: "search",
-            value: query,
-            placeholder: text.searchPlaceholder,
-            "aria-label": text.searchPlaceholder,
-            onChange: (event) => setQuery(event.target.value)
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.Button, { variant: "ghost", size: "sm", onClick: () => state.selectAll(shown), disabled: shown.length === 0, children: text.selectAll }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.Button, { variant: "ghost", size: "sm", onClick: state.clearSelection, disabled: selectedCount === 0, children: text.clearSelection }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.Button, { variant: "ghost", size: "sm", onClick: state.reload, disabled: state.busy, children: text.refresh }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: text.selectedCount(selectedCount) }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: text.totalSize((0, import_dsh_client_ui_primitives2.fileSizeText)(state.listing?.totalSizeBytes ?? 0)) }),
-        view.hidden === 0 ? null : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: text.hiddenBySearch(view.hidden) })
-      ] }),
-      view.groups.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { children: text.noMatch }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: LIST_VIEWPORT, children: view.groups.map((group) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-        ArchiveGroup,
+  const status = notice ?? state.report?.message;
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: cls.toolbar, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        import_dsh_client_ui_primitives2.Input,
         {
-          group,
-          now,
-          selected: state.selected,
-          onToggle: state.toggle
-        },
-        group.workspaceId ?? ""
-      )) }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          import_dsh_client_ui_primitives2.Button,
-          {
-            variant: "outline",
-            size: "sm",
-            disabled: selectedCount === 0 || state.busy || !available(state, "unarchive"),
-            onClick: () => void state.unarchive(),
-            children: text.unarchive
+          className: cls.search,
+          type: "search",
+          value: query,
+          icon: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.IconSearchOutline16, { size: 14 }),
+          placeholder: text.searchPlaceholder,
+          "aria-label": text.searchPlaceholder,
+          disabled: entries.length === 0,
+          onChange: (event) => {
+            setQuery(event.target.value);
           }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          import_dsh_client_ui_primitives2.Button,
-          {
-            variant: "primary",
-            size: "sm",
-            disabled: selectedCount === 0 || state.busy || !available(state, "delete"),
-            onClick: () => setConfirming(true),
-            children: text.deleteAction
-          }
-        )
-      ] })
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        import_dsh_client_ui_primitives2.Button,
+        {
+          variant: "ghost",
+          size: "sm",
+          icon: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.IconRefreshOutline14, { size: 14 }),
+          "aria-label": text.refresh,
+          title: text.refresh,
+          disabled: state.busy,
+          onClick: state.reload
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        ShutdownAll,
+        {
+          api: state.api,
+          enabled: available(state, "shutdown"),
+          icon: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.IconStopFill16, { size: 14 }),
+          onReport: setNotice
+        }
+      )
     ] }),
-    state.report === void 0 ? null : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { children: state.report.message }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Diagnostics, { state }),
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(CapabilityNotices, { state }),
+    entries.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: cls.empty, children: text.empty }) : view.groups.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: cls.empty, children: text.noMatch }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: cls.list, children: view.groups.map((group) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+      ArchiveGroup,
+      {
+        group,
+        now,
+        selected: state.selected,
+        onToggle: state.toggle
+      },
+      group.workspaceId ?? ""
+    )) }),
+    status === void 0 ? null : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: cls.status, "data-tone": state.report?.kind ?? "ok", children: status }),
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Provenance, { state }),
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: cls.foot, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: cls.footInfo, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: text.selectedCount(selectedCount) }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Separator, {}),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: text.totalSize((0, import_dsh_client_ui_primitives2.fileSizeText)(state.listing?.totalSizeBytes ?? 0)) }),
+        view.hidden === 0 ? null : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Separator, {}),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: text.hiddenBySearch(view.hidden) })
+        ] })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.Button, { variant: "ghost", size: "sm", disabled: shown.length === 0, onClick: () => state.selectAll(shown), children: text.selectAll }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.Button, { variant: "ghost", size: "sm", disabled: selectedCount === 0, onClick: state.clearSelection, children: text.clearSelection }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        import_dsh_client_ui_primitives2.Button,
+        {
+          variant: "outline",
+          size: "sm",
+          disabled: selectedCount === 0 || state.busy || !available(state, "unarchive"),
+          onClick: () => {
+            setNotice(void 0);
+            void state.unarchive();
+          },
+          children: text.unarchive
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        import_dsh_client_ui_primitives2.Button,
+        {
+          variant: "primary",
+          size: "sm",
+          icon: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.IconTrashOutline16, { size: 14 }),
+          disabled: selectedCount === 0 || state.busy || !available(state, "delete"),
+          onClick: () => {
+            setConfirming(true);
+          },
+          children: text.deleteAction
+        }
+      )
+    ] }),
     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
       import_dsh_client_ui_primitives2.RiskConfirmation,
       {
@@ -560,18 +669,21 @@ function ArchiveGroup({
   onToggle
 }) {
   const label = group.workspaceId === void 0 ? text.ungrouped : group.title !== void 0 && group.title.length > 0 ? group.title : text.untitledWorkspace;
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("section", { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("header", { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.Tag, { tone: group.workspaceId === void 0 ? "quiet" : "outline", children: label }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: text.groupSummary(group.entries.length, (0, import_dsh_client_ui_primitives2.fileSizeText)(group.sizeBytes)) })
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("section", { className: cls.group, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("header", { className: cls.groupHead, children: [
+      group.workspaceId === void 0 ? null : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: cls.groupIcon, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.IconFolderClose16, { size: 13 }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: cls.groupName, children: label }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: cls.groupCount, children: text.groupSummary(group.entries.length, (0, import_dsh_client_ui_primitives2.fileSizeText)(group.sizeBytes)) })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("ul", { children: group.entries.map((entry) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("ul", { className: cls.rows, children: group.entries.map((entry) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
       ArchiveRow,
       {
         entry,
         now,
         selected: selected.has(entry.id),
-        onToggle: () => onToggle(entry.id)
+        onToggle: () => {
+          onToggle(entry.id);
+        }
       },
       entry.id
     )) })
@@ -584,57 +696,56 @@ function ArchiveRow({
   onToggle
 }) {
   const activity = entry.lastActivityAt ?? entry.createdAt;
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("li", { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("label", { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("input", { type: "checkbox", checked: selected, onChange: onToggle }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: entryLabel(entry) })
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { title: new Date(entry.createdAt).toLocaleString(), children: [
-      text.createdAt,
-      " ",
-      relativeText((0, import_dsh_client_ui_primitives2.relativeTime)(entry.createdAt, now))
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { title: new Date(activity).toLocaleString(), children: [
-      text.lastActivityAt,
-      " ",
-      relativeText((0, import_dsh_client_ui_primitives2.relativeTime)(activity, now))
-    ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: entry.sizeBytes === void 0 ? text.unknownSize : (0, import_dsh_client_ui_primitives2.fileSizeText)(entry.sizeBytes) }),
-    entry.cwd === void 0 ? null : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { title: entry.cwd, children: entry.cwd })
-  ] });
+  const detail = [
+    `${text.createdAt} ${new Date(entry.createdAt).toLocaleString()}`,
+    `${text.lastActivityAt} ${new Date(activity).toLocaleString()}`,
+    entry.id,
+    ...entry.cwd === void 0 ? [] : [entry.cwd]
+  ].join("\n");
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("li", { className: cls.row, "data-selected": String(selected), children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("label", { className: cls.rowLabel, title: detail, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("input", { className: cls.check, type: "checkbox", checked: selected, onChange: onToggle }),
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: cls.rowTitle, children: entryLabel(entry) }),
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: cls.rowMeta, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { children: [
+        text.createdAt,
+        " ",
+        relativeText((0, import_dsh_client_ui_primitives2.relativeTime)(entry.createdAt, now))
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Separator, {}),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { children: [
+        text.lastActivityAt,
+        " ",
+        relativeText((0, import_dsh_client_ui_primitives2.relativeTime)(activity, now))
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Separator, {}),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: entry.sizeBytes === void 0 ? text.unknownSize : (0, import_dsh_client_ui_primitives2.fileSizeText)(entry.sizeBytes) })
+    ] })
+  ] }) });
 }
 function available(state, id) {
   return state.capabilities?.capabilities[id].available ?? true;
+}
+function Provenance({ state }) {
+  const listing = state.listing;
+  if (listing === void 0) return null;
+  const parts = [
+    ...listing.degraded ? [text.degradedMetadata] : [],
+    ...listing.unresolved.length === 0 ? [] : [`${String(listing.unresolved.length)} ${text.unresolvedNotice}`],
+    ...state.capabilities === void 0 ? [] : [`${text.backend}: ${state.capabilities.persistenceBackend} \xB7 v${state.capabilities.version}`]
+  ];
+  if (parts.length === 0) return null;
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: cls.provenance, children: parts.join("\u3000") });
 }
 function CapabilityNotices({ state }) {
   const report = state.capabilities?.capabilities;
   if (report === void 0) return null;
   const blocked = ["unarchive", "delete", "shutdown"].map((id) => ({ id, status: report[id] })).filter((entry) => !entry.status.available);
   if (blocked.length === 0) return null;
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("ul", { children: blocked.map(({ id, status }) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("li", { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.Tag, { tone: "warning", children: id }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: status.code === void 0 ? "" : blockText(status.code) }),
-    status.subject === void 0 ? null : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("code", { children: status.subject })
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: cls.notices, children: blocked.map(({ id, status }) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: cls.notice, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.IconWarningOutline16, { size: 13 }),
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: status.code === void 0 ? id : blockText(status.code) }),
+    status.subject === void 0 ? null : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("code", { className: cls.noticeSubject, children: status.subject })
   ] }, id)) });
-}
-function Diagnostics({ state }) {
-  const listing = state.listing;
-  if (listing === void 0) return null;
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("footer", { children: [
-    listing.degraded ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { children: text.degradedMetadata }) : null,
-    listing.unresolved.length === 0 ? null : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("p", { children: [
-      String(listing.unresolved.length),
-      " ",
-      text.unresolvedNotice
-    ] }),
-    state.capabilities === void 0 ? null : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("p", { children: [
-      text.backend,
-      ": ",
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("code", { children: state.capabilities.persistenceBackend }),
-      " \xB7 v",
-      state.capabilities.version
-    ] })
-  ] });
 }
 
 // src/client/sidebar/adapter.ts
