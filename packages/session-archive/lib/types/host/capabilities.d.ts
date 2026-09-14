@@ -18,6 +18,8 @@ import type { DomainFacilityLike, WorkspaceRegistryLike } from './internals/work
 export interface HostSurfaces {
     /** `ctx.registry`, the cordis plugin registry the effect scan walks. */
     readonly registry: unknown;
+    /** `ctx.get('agents')`; soft, and absent only where no agent can exist. */
+    readonly agents: unknown;
     /** `ctx.workspaceRegistry`; a hard dependency, so normally present. */
     readonly workspaceRegistry: WorkspaceRegistryLike | undefined;
     /** `ctx.sessionPersistence`; a hard dependency, so normally present. */

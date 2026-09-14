@@ -14,6 +14,7 @@ function healthyRegistry() {
 function healthy(overrides: Partial<HostSurfaces> = {}): HostSurfaces {
   return {
     registry: healthyRegistry(),
+    agents: { get: () => undefined, list: () => [], roots: () => [] },
     workspaceRegistry: {
       archivedSessionIds: [],
       archiveSession: async () => {},

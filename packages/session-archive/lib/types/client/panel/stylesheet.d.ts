@@ -2,13 +2,6 @@
  * The panel's stylesheet, and the single place its class names are written
  * down on the JavaScript side.
  *
- * DSH's client module loader claims every untagged `<style>` element for the
- * plugin whose factory just ran, and drops them again when that plugin
- * unloads. Appending the tag here — at module scope, with no `data-plugin`
- * attribute of our own — is therefore all it takes to get the same lifecycle
- * the first-party packages get: the CSS arrives with the bundle and leaves
- * with it. `data-plugin-css` only names the sheet in the loader's bookkeeping.
- *
  * The alternative, inline `style` objects on every element, cannot express
  * `:hover`, `::-webkit-scrollbar`, or `position: sticky` backgrounds, and
  * would put the panel's looks in a dozen places instead of one.

@@ -12,14 +12,14 @@ import { resolveSessionRoot } from '../src/host/internals/jsonl-backend.js'
 import type { PersistenceLike } from '../src/host/internals/jsonl-backend.js'
 import type { WorkspaceEntityLike, WorkspaceRegistryLike } from '../src/host/internals/workspace-state.js'
 
-const logger = { info: () => {}, warn: () => {} }
+const logger = { info: () => {}, warn: () => {}, error: () => {} }
 
 /** A logger that appends every line to `lines`, for tests that read the log. */
 function collect(lines: string[]) {
   const push = (line: string): void => {
     lines.push(line)
   }
-  return { info: push, warn: push }
+  return { info: push, warn: push, error: push }
 }
 
 let root: string
@@ -108,7 +108,11 @@ function harness(options: {
   } as unknown as PersistenceLike
 
   const archive = new ArchiveWriter({ registry, storageDomain: storageDomain as never })
-  const teardown = new AgentTeardown({ registry: { values: () => [] }, agents: { get: () => undefined, list: () => [] } })
+  const teardown = new AgentTeardown({
+    registry: { values: () => [] },
+    agents: { get: () => undefined, list: () => [], roots: () => [] },
+    logger,
+  })
   const remover = new LogRemover({
     persistence,
     registry,

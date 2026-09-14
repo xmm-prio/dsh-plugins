@@ -53,6 +53,14 @@ import type { ArchiveState } from './useArchive.js'
 export interface FooterActionProps {
   /** Whether the sidebar is expanded; collapsed rows show the icon only. */
   readonly wide?: boolean
+  /**
+   * Session list and current selection, a standard prop on every slot.
+   *
+   * The host half cannot see which session is selected — that is browser
+   * state, and no host surface publishes it — but this half can, and the
+   * background shutdown needs it to leave the foreground session alone.
+   */
+  readonly useSessions: <T>(selector: (state: { readonly current: string | undefined }) => T) => T
 }
 
 /** The prose the archive-area hook composes its reports out of. */
@@ -72,12 +80,13 @@ function Separator(): JSX.Element {
 export function createArchivePanel(ctx: Context): (props: FooterActionProps) => JSX.Element {
   const api = createArchiveApi(ctx)
 
-  return function ArchivePanel({ wide }: FooterActionProps): JSX.Element {
+  return function ArchivePanel({ wide, useSessions }: FooterActionProps): JSX.Element {
     const [open, setOpen] = useState(false)
     const close = useCallback(() => {
       setOpen(false)
     }, [])
     const state = useArchive(api, open, copy)
+    const currentSessionId = useSessions((sessions) => sessions.current)
 
     return (
       <>
@@ -102,14 +111,20 @@ export function createArchivePanel(ctx: Context): (props: FooterActionProps) => 
               <IconCloseOutline16 size={14} />
             </button>
           </header>
-          <ArchiveBody state={state} />
+          <ArchiveBody state={state} currentSessionId={currentSessionId} />
         </Modal>
       </>
     )
   }
 }
 
-function ArchiveBody({ state }: { state: ArchiveState }): JSX.Element {
+function ArchiveBody({
+  state,
+  currentSessionId,
+}: {
+  state: ArchiveState
+  currentSessionId: string | undefined
+}): JSX.Element {
   const [confirming, setConfirming] = useState(false)
   const [acknowledged, setAcknowledged] = useState(false)
   const [query, setQuery] = useState('')
@@ -185,6 +200,7 @@ function ArchiveBody({ state }: { state: ArchiveState }): JSX.Element {
           api={state.api}
           enabled={available(state, 'shutdown')}
           icon={<IconStopFill16 size={14} />}
+          currentSessionId={currentSessionId}
           onReport={setNotice}
         />
       </div>

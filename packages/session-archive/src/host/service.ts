@@ -16,6 +16,7 @@ import type {
   CapabilityId,
   CapabilityReport,
   OperationFailure,
+  RunningSessionsResult,
 } from '../contract.js'
 import { NO_SELECTION, planBulkArchive } from '../domain/grouping.js'
 import type { BulkArchiveScope, GroupingInput, SessionListEntry } from '../domain/grouping.js'
@@ -132,12 +133,59 @@ export class SessionArchiveService {
     return this.bulkArchive({ kind: 'ungrouped' })
   }
 
-  /** Stop every running agent, releasing their background resources. */
-  async shutdownAll(): Promise<BatchResult> {
-    if (!this.deps.capabilities.shutdown.available) {
-      return refuseBatch(this.deps.teardown.liveSessionIds(), 'shutdown', this.deps.capabilities)
+  /**
+   * The sessions a shutdown could act on, named well enough to confirm.
+   *
+   * Split from {@link shutdown} on purpose. "Close everything" is a policy, not
+   * a primitive: a caller reads the list, decides what belongs in its own
+   * notion of "everything" — the archive panel leaves out the session the user
+   * is looking at — and passes exactly those ids back. A number alone could
+   * never be checked against anything.
+   *
+   * @returns one row per live root agent, newest activity first.
+   */
+  async running(): Promise<RunningSessionsResult> {
+    const ids = this.deps.teardown.runningSessionIds()
+    if (ids.length === 0) return { sessions: [], catalogError: undefined }
+
+    const catalog = await this.deps.metadata.catalog()
+    if (catalog.kind === 'unreadable') {
+      return {
+        sessions: ids.map((id) => ({ id, title: undefined, cwd: undefined, blank: false })),
+        catalogError: catalog.reason,
+      }
     }
-    return { outcomes: await this.deps.teardown.teardownAll() }
+
+    const live = new Set(ids)
+    const described = new Map(catalog.rows.filter((row) => live.has(row.id)).map((row) => [row.id, row]))
+    const sessions = ids
+      .map((id) => described.get(id))
+      .filter((row): row is CatalogRow => row !== undefined)
+      .sort((left, right) => updatedAtOf(right) - updatedAtOf(left))
+      .map((row) => ({ id: row.id, title: row.title, cwd: row.cwd, blank: row.blank }))
+
+    // A live agent the catalog does not list is still a live agent. It has no
+    // stored log yet — a session created this second — and leaving it out
+    // would make the confirmed list disagree with what actually gets closed.
+    const undescribed = ids
+      .filter((id) => !described.has(id))
+      .map((id) => ({ id, title: undefined, cwd: undefined, blank: true }))
+
+    return { sessions: [...sessions, ...undescribed], catalogError: undefined }
+  }
+
+  /**
+   * Stop the named sessions, releasing the resources their agents hold.
+   *
+   * The only shutdown primitive. Closing one session and closing every
+   * background session are the same call with a different list, so neither can
+   * drift away from the other's semantics.
+   */
+  async shutdown(ids: readonly string[]): Promise<BatchResult> {
+    if (!this.deps.capabilities.shutdown.available) {
+      return refuseBatch(ids, 'shutdown', this.deps.capabilities)
+    }
+    return { outcomes: await this.deps.teardown.teardownEach(ids) }
   }
 
   private async bulkArchive(scope: BulkArchiveScope): Promise<BulkArchiveResult> {

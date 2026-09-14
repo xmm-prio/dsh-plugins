@@ -896,6 +896,23 @@ function success(id) {
   return { id, ok: true };
 }
 
+// src/host/rejection-watch.ts
+async function watchingRejections(operation, subject, logger, proc = process) {
+  const listener = (reason) => {
+    const detail = reason instanceof Error ? reason.stack ?? reason.message : String(reason);
+    logger.error(
+      `session-archive: unhandled rejection while tearing down ${subject()}; DSH treats any unhandled rejection as fatal and is about to exit.
+${detail}`
+    );
+  };
+  proc.prependListener("unhandledRejection", listener);
+  try {
+    return await operation();
+  } finally {
+    proc.off("unhandledRejection", listener);
+  }
+}
+
 // src/host/agent-teardown.ts
 var TeardownShapeError = class extends Error {
   constructor(message) {
@@ -916,24 +933,37 @@ var AgentTeardown = class {
    */
   inFlight = /* @__PURE__ */ new Map();
   /**
-   * Sessions that currently have a live agent.
+   * Sessions whose lifecycle effect this plugin has already consumed.
    *
-   * Prefers the public registry; the effect labels are the fallback for a
-   * profile that does not mount `ctx.agents`.
-   *
-   * @returns the live session ids.
+   * A cordis effect is single-shot. Once its disposer has run the effect is
+   * gone from the fiber tree, so a session whose teardown failed to deregister
+   * its agent afterwards looks identical to one whose label convention changed.
+   * Remembering which effects were spent tells those two apart.
    */
-  liveSessionIds() {
+  spent = /* @__PURE__ */ new Set();
+  /** The session being torn down right now, for rejection attribution. */
+  subject = "nothing";
+  /**
+   * Sessions that can be shut down.
+   *
+   * Root agents only: a subagent is torn down by the parent it belongs to, and
+   * offering it as its own target invites exactly the ownership violation the
+   * cascade exists to avoid. The effect-label scan is the fallback for a
+   * profile that does not mount `ctx.agents`, where no agent can exist anyway.
+   *
+   * @returns the session ids with a live root agent.
+   */
+  runningSessionIds() {
     const { agents } = this.deps;
     if (agents === void 0) return listLiveAgentSessionIds(this.deps.registry);
-    return agents.list().map((agent) => agent.id);
+    return agents.roots().map((agent) => agent.id);
   }
   /**
    * Dispose one session's agent, if it has one.
    * @param sessionId - the session to stop.
    * @returns whether a live agent was actually torn down.
    * @throws {TeardownShapeError} when liveness and the effect labels disagree,
-   * or when the disposer finished with the agent still registered.
+   *   or when the disposer finished with the agent still registered.
    */
   async teardown(sessionId) {
     const running = this.inFlight.get(sessionId);
@@ -945,24 +975,37 @@ var AgentTeardown = class {
     return attempt;
   }
   /**
-   * Dispose every live agent, reporting each one separately.
+   * Dispose the named sessions, reporting each one separately.
    *
    * One failure never stops the rest: the point of the action is to release
    * background resources, and a stuck session must not hold the others hostage.
    *
-   * @returns one outcome per session that had a live agent.
+   * The whole batch runs under rejection attribution, because this is the one
+   * operation in the plugin that can take the harness down with it.
+   *
+   * @param sessionIds - the sessions to stop; an id with no live agent reports
+   *   success, since the requested end state already holds.
+   * @returns one outcome per requested session, in request order.
    */
-  async teardownAll() {
-    const outcomes = [];
-    for (const id of this.liveSessionIds()) {
-      try {
-        await this.teardown(id);
-        outcomes.push(success(id));
-      } catch (error) {
-        outcomes.push(failure(id, "teardown-effect-missing", describeError(error)));
-      }
-    }
-    return outcomes;
+  async teardownEach(sessionIds) {
+    return watchingRejections(
+      async () => {
+        const outcomes = [];
+        for (const id of sessionIds) {
+          this.subject = `session "${id}"`;
+          try {
+            await this.teardown(id);
+            outcomes.push(success(id));
+          } catch (error) {
+            outcomes.push(failure(id, "teardown-effect-missing", describeError(error)));
+          }
+        }
+        return outcomes;
+      },
+      () => this.subject,
+      this.deps.logger,
+      this.deps.process
+    );
   }
   async dispose(sessionId) {
     const { agents, registry } = this.deps;
@@ -973,13 +1016,12 @@ var AgentTeardown = class {
       );
     }
     if (effects.length === 0) {
-      if (agents?.get(sessionId) !== void 0) {
-        throw new TeardownShapeError(
-          `session "${sessionId}" has a live agent but no "agentLoop.lifecycle" effect; the host's effect labels changed`
-        );
-      }
-      return { kind: "not-running" };
+      if (agents?.get(sessionId) === void 0) return { kind: "not-running" };
+      throw new TeardownShapeError(
+        this.spent.has(sessionId) ? `session "${sessionId}" stayed registered after its lifecycle effect was disposed; it cannot be torn down twice` : `session "${sessionId}" has a live agent but no "agentLoop.lifecycle" effect; the host's effect labels changed`
+      );
     }
+    this.spent.add(sessionId);
     await runEffectDisposer(effects[0]);
     if (agents?.get(sessionId) !== void 0) {
       throw new TeardownShapeError(
@@ -1379,7 +1421,12 @@ function probeUnarchive(surfaces, archive) {
   return AVAILABLE;
 }
 function probeShutdown(surfaces) {
-  return probeEffectScan(surfaces.registry) ? AVAILABLE : blocked("fiber-scan-unavailable", "ctx.registry fibers");
+  if (!probeEffectScan(surfaces.registry)) return blocked("fiber-scan-unavailable", "ctx.registry fibers");
+  const agents = surfaces.agents;
+  if (agents !== void 0 && typeof agents.roots !== "function") {
+    return blocked("agent-roots-unavailable", "agents.roots");
+  }
+  return AVAILABLE;
 }
 function probeDelete(surfaces, shutdown, unarchive) {
   if (!shutdown.available) return shutdown;
@@ -1816,12 +1863,45 @@ var SessionArchiveService = class {
   async archiveUngrouped() {
     return this.bulkArchive({ kind: "ungrouped" });
   }
-  /** Stop every running agent, releasing their background resources. */
-  async shutdownAll() {
-    if (!this.deps.capabilities.shutdown.available) {
-      return refuseBatch(this.deps.teardown.liveSessionIds(), "shutdown", this.deps.capabilities);
+  /**
+   * The sessions a shutdown could act on, named well enough to confirm.
+   *
+   * Split from {@link shutdown} on purpose. "Close everything" is a policy, not
+   * a primitive: a caller reads the list, decides what belongs in its own
+   * notion of "everything" — the archive panel leaves out the session the user
+   * is looking at — and passes exactly those ids back. A number alone could
+   * never be checked against anything.
+   *
+   * @returns one row per live root agent, newest activity first.
+   */
+  async running() {
+    const ids = this.deps.teardown.runningSessionIds();
+    if (ids.length === 0) return { sessions: [], catalogError: void 0 };
+    const catalog = await this.deps.metadata.catalog();
+    if (catalog.kind === "unreadable") {
+      return {
+        sessions: ids.map((id) => ({ id, title: void 0, cwd: void 0, blank: false })),
+        catalogError: catalog.reason
+      };
     }
-    return { outcomes: await this.deps.teardown.teardownAll() };
+    const live = new Set(ids);
+    const described = new Map(catalog.rows.filter((row) => live.has(row.id)).map((row) => [row.id, row]));
+    const sessions = ids.map((id) => described.get(id)).filter((row) => row !== void 0).sort((left, right) => updatedAtOf(right) - updatedAtOf(left)).map((row) => ({ id: row.id, title: row.title, cwd: row.cwd, blank: row.blank }));
+    const undescribed = ids.filter((id) => !described.has(id)).map((id) => ({ id, title: void 0, cwd: void 0, blank: true }));
+    return { sessions: [...sessions, ...undescribed], catalogError: void 0 };
+  }
+  /**
+   * Stop the named sessions, releasing the resources their agents hold.
+   *
+   * The only shutdown primitive. Closing one session and closing every
+   * background session are the same call with a different list, so neither can
+   * drift away from the other's semantics.
+   */
+  async shutdown(ids) {
+    if (!this.deps.capabilities.shutdown.available) {
+      return refuseBatch(ids, "shutdown", this.deps.capabilities);
+    }
+    return { outcomes: await this.deps.teardown.teardownEach(ids) };
   }
   async bulkArchive(scope) {
     if (!this.deps.capabilities.archive.available) {
@@ -1909,7 +1989,8 @@ var OPERATIONS = [
   "delete",
   "archiveWorkspace",
   "archiveUngrouped",
-  "shutdownAll"
+  "running",
+  "shutdown"
 ];
 
 // src/host/transport/endpoint-router.ts
@@ -2014,9 +2095,11 @@ function mount(ctx, config) {
   const persistence = ctx.sessionPersistence;
   const storageDomain = ctx.get("storageDomain");
   const projectionCache = ctx.get("sessionProjectionCache");
+  const agents = ctx.get("agents");
   const sessionRoot = resolveSessionRoot(persistence, config.sessionRoot);
   const capabilities = probeCapabilities({
     registry: ctx.registry,
+    agents,
     workspaceRegistry: registry,
     persistence,
     storageDomain,
@@ -2031,10 +2114,7 @@ function mount(ctx, config) {
     ].join("\n")
   );
   const archive = new ArchiveWriter({ registry, storageDomain });
-  const teardown = new AgentTeardown({
-    registry: ctx.registry,
-    agents: ctx.get("agents")
-  });
+  const teardown = new AgentTeardown({ registry: ctx.registry, agents, logger: ctx.logger });
   const metadata = new MetadataReader({ persistence, projectionCache, logger: ctx.logger });
   const remover = new LogRemover({
     persistence,
@@ -2061,7 +2141,8 @@ function mount(ctx, config) {
     delete: async (payload) => service.delete(readStringArray(payload, "ids")),
     archiveWorkspace: async (payload) => service.archiveWorkspace(readString(payload, "workspaceId")),
     archiveUngrouped: async () => service.archiveUngrouped(),
-    shutdownAll: async () => service.shutdownAll()
+    running: async () => service.running(),
+    shutdown: async (payload) => service.shutdown(readStringArray(payload, "ids"))
   });
 }
 export {

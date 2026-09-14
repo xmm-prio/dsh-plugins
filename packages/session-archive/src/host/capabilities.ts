@@ -24,6 +24,8 @@ import type { DomainFacilityLike, WorkspaceRegistryLike } from './internals/work
 export interface HostSurfaces {
   /** `ctx.registry`, the cordis plugin registry the effect scan walks. */
   readonly registry: unknown
+  /** `ctx.get('agents')`; soft, and absent only where no agent can exist. */
+  readonly agents: unknown
   /** `ctx.workspaceRegistry`; a hard dependency, so normally present. */
   readonly workspaceRegistry: WorkspaceRegistryLike | undefined
   /** `ctx.sessionPersistence`; a hard dependency, so normally present. */
@@ -75,9 +77,23 @@ function probeUnarchive(surfaces: HostSurfaces, archive: CapabilityStatus): Capa
   return AVAILABLE
 }
 
-/** Tearing an agent down means walking the cordis fiber tree for its lifecycle effect. */
+/**
+ * Tearing an agent down means walking the cordis fiber tree for its lifecycle
+ * effect, and knowing which agents are roots.
+ *
+ * `roots()` is public API and present from the minimum supported DSH, but it
+ * is checked all the same: without it the target set silently widens to
+ * include subagents, and disposing a subagent out from under the parent still
+ * awaiting it is worse than not offering the action at all. A profile with no
+ * `ctx.agents` needs no check — nothing registers agents there.
+ */
 function probeShutdown(surfaces: HostSurfaces): CapabilityStatus {
-  return probeEffectScan(surfaces.registry) ? AVAILABLE : blocked('fiber-scan-unavailable', 'ctx.registry fibers')
+  if (!probeEffectScan(surfaces.registry)) return blocked('fiber-scan-unavailable', 'ctx.registry fibers')
+  const agents = surfaces.agents
+  if (agents !== undefined && typeof (agents as { roots?: unknown }).roots !== 'function') {
+    return blocked('agent-roots-unavailable', 'agents.roots')
+  }
+  return AVAILABLE
 }
 
 /** Deleting needs teardown, an addressable log directory, and the archive-set write. */

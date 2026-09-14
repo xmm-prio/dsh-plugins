@@ -1,11 +1,13 @@
 /**
  * Browser half of the session archive plugin.
  *
- * Two surfaces. The archive area goes into the host's own
- * `sidebar.footer.action` slot, so nothing about the sidebar is patched to get
- * it. The per-row bulk-archive button has no slot to go into — the built-in
- * workspace browser exposes none anywhere near a row — and is injected into the
- * row's action strip instead, behind the kill-switch in `sidebar/`.
+ * Three surfaces. The archive area goes into the host's own
+ * `sidebar.footer.action` slot and the per-session shutdown button into
+ * `conversation.session.header.utilities`, so nothing about the sidebar or
+ * the conversation header is patched to get either. The per-row bulk-archive
+ * button has no slot to go into — the built-in workspace browser exposes none
+ * anywhere near a row — and is injected into the row's action strip instead,
+ * behind the kill-switch in `sidebar/`.
  *
  * @module @dsh-plugins/session-archive/client
  */

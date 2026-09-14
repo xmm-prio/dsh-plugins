@@ -81,9 +81,12 @@ function mount(ctx: Context, config: Config): void {
   const storageDomain = ctx.get('storageDomain') as DomainFacilityLike | undefined
   const projectionCache = ctx.get('sessionProjectionCache') as ProjectionCacheLike | undefined
 
+  const agents = ctx.get('agents') as AgentRegistryLike | undefined
+
   const sessionRoot = resolveSessionRoot(persistence, config.sessionRoot)
   const capabilities = probeCapabilities({
     registry: ctx.registry,
+    agents,
     workspaceRegistry: registry,
     persistence,
     storageDomain,
@@ -99,10 +102,7 @@ function mount(ctx: Context, config: Config): void {
   )
 
   const archive = new ArchiveWriter({ registry, storageDomain })
-  const teardown = new AgentTeardown({
-    registry: ctx.registry,
-    agents: ctx.get('agents') as AgentRegistryLike | undefined,
-  })
+  const teardown = new AgentTeardown({ registry: ctx.registry, agents, logger: ctx.logger })
   const metadata = new MetadataReader({ persistence, projectionCache, logger: ctx.logger })
   const remover = new LogRemover({
     persistence,
@@ -131,6 +131,7 @@ function mount(ctx: Context, config: Config): void {
     delete: async (payload) => service.delete(readStringArray(payload, 'ids')),
     archiveWorkspace: async (payload) => service.archiveWorkspace(readString(payload, 'workspaceId')),
     archiveUngrouped: async () => service.archiveUngrouped(),
-    shutdownAll: async () => service.shutdownAll(),
+    running: async () => service.running(),
+    shutdown: async (payload) => service.shutdown(readStringArray(payload, 'ids')),
   })
 }

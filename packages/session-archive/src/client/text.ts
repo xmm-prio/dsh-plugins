@@ -48,8 +48,25 @@ export const text = {
   selectAll: '全选',
   clearSelection: '取消选择',
   refresh: '刷新',
-  shutdownAll: '关闭所有运行中会话',
+  shutdownAll: '关闭后台运行中的会话',
+  shutdownSession: '关闭本会话的 agent',
   archiving: '正在归档…',
+
+  /**
+   * Shutdown confirmation.
+   *
+   * 关闭 is about the running agent, never about the session: the log stays,
+   * the row stays, and opening the session again brings it back. The copy has
+   * to carry that, because the word next to it in this panel is 删除.
+   */
+  shutdownTitle: '关闭运行中的会话',
+  /** Not 关闭: the modal's own dismiss control already carries that word. */
+  shutdownConfirm: '确认关闭',
+  shutdownCancel: '取消',
+  shutdownNote: '会话日志不受影响；下次打开会话时会重新载入。',
+  shutdownCurrentExcluded: '你正在查看的会话不在其中。要关闭它，用会话标题栏上的按钮。',
+  shutdownSessionTitle: '关闭这个会话的 agent',
+  shutdownSessionNote: '正在进行的对话会被停止，它派出的子代理也会一并结束。会话日志不受影响。',
 
   /** Empty, loading, and failure states. */
   loading: '正在读取归档区…',
@@ -84,7 +101,9 @@ export const text = {
   skippedCount: (n: number) => `跳过 ${String(n)} 个`,
   shutdownCount: (n: number) => `已关闭 ${String(n)} 个运行中会话`,
   nothingToArchive: '这一行没有可归档的会话。',
-  nothingRunning: '当前没有运行中的会话。',
+  nothingRunning: '当前没有在后台运行的会话。',
+  sessionNotRunning: '这个会话当前没有运行中的 agent。',
+  untitledSession: '未命名会话',
   unknownWorkspace: '该工作区已不存在。',
   partialFailure: (n: number) => `${String(n)} 个操作未成功`,
 } as const
@@ -97,6 +116,26 @@ export function catalogUnreadableText(reason: string): string {
 /** Delete-confirmation body text, which names exactly what is about to happen. */
 export function deleteDescription(count: number): string {
   return `即将永久删除 ${String(count)} 个会话的日志文件。这些会话会先被停止，随后从归档区和原工作区一并移除。此操作不可撤销。`
+}
+
+/** Shutdown-confirmation lead line, which names exactly how many and what happens. */
+export function shutdownDescription(count: number): string {
+  return `即将停止 ${String(count)} 个会话的 agent，释放它们占用的后台资源。正在进行的对话会被中断。`
+}
+
+/**
+ * One shutdown result as a single line.
+ *
+ * The failures are named individually rather than counted. "1 个操作未成功"
+ * tells a user nothing they can act on, and the whole point of closing agents
+ * one at a time is that a session which refuses to stop is the interesting
+ * one.
+ */
+export function shutdownReport(closed: number, failures: readonly { id: string; code: FailureCode }[]): string {
+  return [
+    ...(closed > 0 ? [text.shutdownCount(closed)] : []),
+    ...failures.map((failure) => `${failure.id}: ${failureText(failure.code)}`),
+  ].join('；')
 }
 
 /** How a sidebar row names itself in the injected button's tooltip. */
@@ -201,6 +240,7 @@ const BLOCK_TEXT: Readonly<Record<CapabilityBlockCode, string>> = {
   'private-write-path-missing': '宿主的归档集合写入通路已改变',
   'workspace-domain-unavailable': '工作区存储域未打开',
   'fiber-scan-unavailable': '无法遍历 Cordis 的插件树',
+  'agent-roots-unavailable': '无法区分顶层 agent 与子代理，关闭会话已停用',
   'persistence-backend-unsupported': '当前持久化后端不支持删除',
   'log-resolver-missing': '后端不再提供日志路径',
   'log-root-unknown': '无法确定会话日志根目录',

@@ -93,6 +93,7 @@ export function createArchiveApi(ctx: Context): ArchiveApi {
     delete: (payload, signal) => invoke('delete', payload, signal),
     archiveWorkspace: (payload, signal) => invoke('archiveWorkspace', payload, signal),
     archiveUngrouped: (payload, signal) => invoke('archiveUngrouped', payload, signal),
-    shutdownAll: (payload, signal) => invoke('shutdownAll', payload, signal),
+    running: (payload, signal) => invoke('running', payload, signal),
+    shutdown: (payload, signal) => invoke('shutdown', payload, signal),
   }
 }

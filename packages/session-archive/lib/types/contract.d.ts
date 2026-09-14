@@ -31,7 +31,9 @@ export type CapabilityId = 'archive' | 'unarchive' | 'delete' | 'deleteLegacy' |
  * plugin promises that such a rename touches one file. The member name travels
  * as free text in {@link CapabilityStatus.subject} instead.
  */
-export type CapabilityBlockCode = 'workspace-registry-unavailable' | 'archive-api-missing' | 'private-write-path-missing' | 'workspace-domain-unavailable' | 'fiber-scan-unavailable' | 'persistence-backend-unsupported' | 'log-resolver-missing' | 'log-root-unknown' | 'projection-cache-unavailable' | 'session-list-unavailable' | 'probe-failed';
+export type CapabilityBlockCode = 'workspace-registry-unavailable' | 'archive-api-missing' | 'private-write-path-missing' | 'workspace-domain-unavailable' | 'fiber-scan-unavailable'
+/** `ctx.agents` is mounted but cannot separate root agents from subagents. */
+ | 'agent-roots-unavailable' | 'persistence-backend-unsupported' | 'log-resolver-missing' | 'log-root-unknown' | 'projection-cache-unavailable' | 'session-list-unavailable' | 'probe-failed';
 /** Verdict for one capability. */
 export interface CapabilityStatus {
     readonly available: boolean;
@@ -132,6 +134,35 @@ export type OperationOutcome = {
 export interface BatchResult {
     readonly outcomes: readonly OperationOutcome[];
 }
+/**
+ * One session that currently holds a live agent.
+ *
+ * Subagents never appear. Their agent belongs to the parent that spawned it
+ * and is released by the parent's own teardown, so listing one as a separate
+ * target would offer the user an action whose only effect is to break the
+ * parent.
+ */
+export interface RunningSession {
+    readonly id: string;
+    /** Resolved title, or undefined when no zero-I/O source had one. */
+    readonly title: string | undefined;
+    readonly cwd: string | undefined;
+    /** True when no turn has started yet — a resumed but never-used session. */
+    readonly blank: boolean;
+}
+/** Payload of the running endpoint. */
+export interface RunningSessionsResult {
+    readonly sessions: readonly RunningSession[];
+    /**
+     * Why the sessions could not be described, when they could not.
+     *
+     * Liveness always reads cleanly — it comes from an in-memory registry — but
+     * the titles come from the session catalog, which can fail. When it does the
+     * ids are still listed, with everything else undefined, because refusing to
+     * shut anything down over a missing title would be the wrong trade.
+     */
+    readonly catalogError: string | undefined;
+}
 /** Why bulk archive left a member of the row alone. Mirrors the sidebar's own rules. */
 export type ArchiveSkipReason = 'subagent' | 'already-archived' | 'blank';
 /** Why a whole bulk archive was refused before any session was considered. */
@@ -209,13 +240,19 @@ export interface EndpointMap {
         readonly request: Record<string, never>;
         readonly response: BulkArchiveResult;
     };
-    shutdownAll: {
+    running: {
         readonly request: Record<string, never>;
+        readonly response: RunningSessionsResult;
+    };
+    shutdown: {
+        readonly request: {
+            readonly ids: readonly string[];
+        };
         readonly response: BatchResult;
     };
 }
 /** Every operation name, in a runtime-iterable form. */
-export declare const OPERATIONS: readonly ["capabilities", "list", "unarchive", "delete", "archiveWorkspace", "archiveUngrouped", "shutdownAll"];
+export declare const OPERATIONS: readonly ["capabilities", "list", "unarchive", "delete", "archiveWorkspace", "archiveUngrouped", "running", "shutdown"];
 /** Request payload type of one operation. */
 export type RequestOf<K extends keyof EndpointMap> = EndpointMap[K]['request'];
 /** Response payload type of one operation. */

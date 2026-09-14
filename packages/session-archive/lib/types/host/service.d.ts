@@ -5,7 +5,7 @@
  * once, instead of every collaborator re-checking. Nothing in this file talks
  * to the wire, and nothing in it touches a host private shape.
  */
-import type { ArchiveListResult, BatchResult, BulkArchiveResult, CapabilitiesResult, CapabilityReport } from '../contract.js';
+import type { ArchiveListResult, BatchResult, BulkArchiveResult, CapabilitiesResult, CapabilityReport, RunningSessionsResult } from '../contract.js';
 import type { AgentTeardown } from './agent-teardown.js';
 import type { ArchiveWriter } from './archive-writer.js';
 import type { LogRemover } from './log-remover.js';
@@ -45,8 +45,26 @@ export declare class SessionArchiveService {
     archiveWorkspace(workspaceId: string): Promise<BulkArchiveResult>;
     /** Archive every session displayed under the ungrouped row. */
     archiveUngrouped(): Promise<BulkArchiveResult>;
-    /** Stop every running agent, releasing their background resources. */
-    shutdownAll(): Promise<BatchResult>;
+    /**
+     * The sessions a shutdown could act on, named well enough to confirm.
+     *
+     * Split from {@link shutdown} on purpose. "Close everything" is a policy, not
+     * a primitive: a caller reads the list, decides what belongs in its own
+     * notion of "everything" — the archive panel leaves out the session the user
+     * is looking at — and passes exactly those ids back. A number alone could
+     * never be checked against anything.
+     *
+     * @returns one row per live root agent, newest activity first.
+     */
+    running(): Promise<RunningSessionsResult>;
+    /**
+     * Stop the named sessions, releasing the resources their agents hold.
+     *
+     * The only shutdown primitive. Closing one session and closing every
+     * background session are the same call with a different list, so neither can
+     * drift away from the other's semantics.
+     */
+    shutdown(ids: readonly string[]): Promise<BatchResult>;
     private bulkArchive;
     /** Shape an already-read catalog into what the grouping rules consume. */
     private groupingInput;

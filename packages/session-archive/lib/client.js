@@ -27,8 +27,8 @@ __export(index_exports, {
 module.exports = __toCommonJS(index_exports);
 
 // src/client/panel/ArchivePanel.tsx
-var import_dsh_client_ui_primitives2 = require("@deepseek-ai/dsh-client-ui-primitives");
-var import_react3 = require("react");
+var import_dsh_client_ui_primitives3 = require("@deepseek-ai/dsh-client-ui-primitives");
+var import_react4 = require("react");
 
 // src/domain/archive-view.ts
 function entryLabel(entry) {
@@ -89,8 +89,24 @@ var text = {
   selectAll: "\u5168\u9009",
   clearSelection: "\u53D6\u6D88\u9009\u62E9",
   refresh: "\u5237\u65B0",
-  shutdownAll: "\u5173\u95ED\u6240\u6709\u8FD0\u884C\u4E2D\u4F1A\u8BDD",
+  shutdownAll: "\u5173\u95ED\u540E\u53F0\u8FD0\u884C\u4E2D\u7684\u4F1A\u8BDD",
+  shutdownSession: "\u5173\u95ED\u672C\u4F1A\u8BDD\u7684 agent",
   archiving: "\u6B63\u5728\u5F52\u6863\u2026",
+  /**
+   * Shutdown confirmation.
+   *
+   * 关闭 is about the running agent, never about the session: the log stays,
+   * the row stays, and opening the session again brings it back. The copy has
+   * to carry that, because the word next to it in this panel is 删除.
+   */
+  shutdownTitle: "\u5173\u95ED\u8FD0\u884C\u4E2D\u7684\u4F1A\u8BDD",
+  /** Not 关闭: the modal's own dismiss control already carries that word. */
+  shutdownConfirm: "\u786E\u8BA4\u5173\u95ED",
+  shutdownCancel: "\u53D6\u6D88",
+  shutdownNote: "\u4F1A\u8BDD\u65E5\u5FD7\u4E0D\u53D7\u5F71\u54CD\uFF1B\u4E0B\u6B21\u6253\u5F00\u4F1A\u8BDD\u65F6\u4F1A\u91CD\u65B0\u8F7D\u5165\u3002",
+  shutdownCurrentExcluded: "\u4F60\u6B63\u5728\u67E5\u770B\u7684\u4F1A\u8BDD\u4E0D\u5728\u5176\u4E2D\u3002\u8981\u5173\u95ED\u5B83\uFF0C\u7528\u4F1A\u8BDD\u6807\u9898\u680F\u4E0A\u7684\u6309\u94AE\u3002",
+  shutdownSessionTitle: "\u5173\u95ED\u8FD9\u4E2A\u4F1A\u8BDD\u7684 agent",
+  shutdownSessionNote: "\u6B63\u5728\u8FDB\u884C\u7684\u5BF9\u8BDD\u4F1A\u88AB\u505C\u6B62\uFF0C\u5B83\u6D3E\u51FA\u7684\u5B50\u4EE3\u7406\u4E5F\u4F1A\u4E00\u5E76\u7ED3\u675F\u3002\u4F1A\u8BDD\u65E5\u5FD7\u4E0D\u53D7\u5F71\u54CD\u3002",
   /** Empty, loading, and failure states. */
   loading: "\u6B63\u5728\u8BFB\u53D6\u5F52\u6863\u533A\u2026",
   empty: "\u5F52\u6863\u533A\u662F\u7A7A\u7684\u3002",
@@ -121,7 +137,9 @@ var text = {
   skippedCount: (n) => `\u8DF3\u8FC7 ${String(n)} \u4E2A`,
   shutdownCount: (n) => `\u5DF2\u5173\u95ED ${String(n)} \u4E2A\u8FD0\u884C\u4E2D\u4F1A\u8BDD`,
   nothingToArchive: "\u8FD9\u4E00\u884C\u6CA1\u6709\u53EF\u5F52\u6863\u7684\u4F1A\u8BDD\u3002",
-  nothingRunning: "\u5F53\u524D\u6CA1\u6709\u8FD0\u884C\u4E2D\u7684\u4F1A\u8BDD\u3002",
+  nothingRunning: "\u5F53\u524D\u6CA1\u6709\u5728\u540E\u53F0\u8FD0\u884C\u7684\u4F1A\u8BDD\u3002",
+  sessionNotRunning: "\u8FD9\u4E2A\u4F1A\u8BDD\u5F53\u524D\u6CA1\u6709\u8FD0\u884C\u4E2D\u7684 agent\u3002",
+  untitledSession: "\u672A\u547D\u540D\u4F1A\u8BDD",
   unknownWorkspace: "\u8BE5\u5DE5\u4F5C\u533A\u5DF2\u4E0D\u5B58\u5728\u3002",
   partialFailure: (n) => `${String(n)} \u4E2A\u64CD\u4F5C\u672A\u6210\u529F`
 };
@@ -130,6 +148,15 @@ function catalogUnreadableText(reason) {
 }
 function deleteDescription(count) {
   return `\u5373\u5C06\u6C38\u4E45\u5220\u9664 ${String(count)} \u4E2A\u4F1A\u8BDD\u7684\u65E5\u5FD7\u6587\u4EF6\u3002\u8FD9\u4E9B\u4F1A\u8BDD\u4F1A\u5148\u88AB\u505C\u6B62\uFF0C\u968F\u540E\u4ECE\u5F52\u6863\u533A\u548C\u539F\u5DE5\u4F5C\u533A\u4E00\u5E76\u79FB\u9664\u3002\u6B64\u64CD\u4F5C\u4E0D\u53EF\u64A4\u9500\u3002`;
+}
+function shutdownDescription(count) {
+  return `\u5373\u5C06\u505C\u6B62 ${String(count)} \u4E2A\u4F1A\u8BDD\u7684 agent\uFF0C\u91CA\u653E\u5B83\u4EEC\u5360\u7528\u7684\u540E\u53F0\u8D44\u6E90\u3002\u6B63\u5728\u8FDB\u884C\u7684\u5BF9\u8BDD\u4F1A\u88AB\u4E2D\u65AD\u3002`;
+}
+function shutdownReport(closed, failures) {
+  return [
+    ...closed > 0 ? [text.shutdownCount(closed)] : [],
+    ...failures.map((failure) => `${failure.id}: ${failureText(failure.code)}`)
+  ].join("\uFF1B");
 }
 function rowName(group) {
   if (group.workspaceId === void 0) return text.ungrouped;
@@ -197,6 +224,7 @@ var BLOCK_TEXT = {
   "private-write-path-missing": "\u5BBF\u4E3B\u7684\u5F52\u6863\u96C6\u5408\u5199\u5165\u901A\u8DEF\u5DF2\u6539\u53D8",
   "workspace-domain-unavailable": "\u5DE5\u4F5C\u533A\u5B58\u50A8\u57DF\u672A\u6253\u5F00",
   "fiber-scan-unavailable": "\u65E0\u6CD5\u904D\u5386 Cordis \u7684\u63D2\u4EF6\u6811",
+  "agent-roots-unavailable": "\u65E0\u6CD5\u533A\u5206\u9876\u5C42 agent \u4E0E\u5B50\u4EE3\u7406\uFF0C\u5173\u95ED\u4F1A\u8BDD\u5DF2\u505C\u7528",
   "persistence-backend-unsupported": "\u5F53\u524D\u6301\u4E45\u5316\u540E\u7AEF\u4E0D\u652F\u6301\u5220\u9664",
   "log-resolver-missing": "\u540E\u7AEF\u4E0D\u518D\u63D0\u4F9B\u65E5\u5FD7\u8DEF\u5F84",
   "log-root-unknown": "\u65E0\u6CD5\u786E\u5B9A\u4F1A\u8BDD\u65E5\u5FD7\u6839\u76EE\u5F55",
@@ -270,50 +298,162 @@ function createArchiveApi(ctx) {
     delete: (payload, signal) => invoke("delete", payload, signal),
     archiveWorkspace: (payload, signal) => invoke("archiveWorkspace", payload, signal),
     archiveUngrouped: (payload, signal) => invoke("archiveUngrouped", payload, signal),
-    shutdownAll: (payload, signal) => invoke("shutdownAll", payload, signal)
+    running: (payload, signal) => invoke("running", payload, signal),
+    shutdown: (payload, signal) => invoke("shutdown", payload, signal)
   };
 }
 
 // src/client/panel/ShutdownAll.tsx
+var import_dsh_client_ui_primitives2 = require("@deepseek-ai/dsh-client-ui-primitives");
+var import_react2 = require("react");
+
+// src/client/shutdown/ShutdownConfirmation.tsx
 var import_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
-var import_react = require("react");
+
+// src/client/stylesheet.ts
+function installStylesheet(name2, css) {
+  if (typeof document === "undefined") return;
+  const style = document.createElement("style");
+  style.setAttribute("data-plugin-css", name2);
+  style.textContent = css;
+  document.head.append(style);
+}
+
+// src/client/shutdown/shutdown.css
+var shutdown_default = "/*\r\n * The shutdown confirmation's list.\r\n *\r\n * Everything else about the card is the host `Modal`'s own chrome. Only the\r\n * body needs styling, and only enough of it that a long list scrolls instead\r\n * of pushing the footer off the screen.\r\n *\r\n * Colours and measurements are `--dsw-*` theme variables and the host's own\r\n * row metrics, matching the archive area next to it. Class names carry a\r\n * `dsh-shutdown-` prefix because this stylesheet is global.\r\n */\r\n\r\n.dsh-shutdown-list {\r\n  display: flex;\r\n  max-height: min(320px, 45dvh);\r\n  flex-direction: column;\r\n  gap: 2px;\r\n  margin: 0;\r\n  padding: 0;\r\n  overflow-y: auto;\r\n  list-style: none;\r\n}\r\n\r\n.dsh-shutdown-row {\r\n  display: flex;\r\n  min-width: 0;\r\n  align-items: center;\r\n  gap: 8px;\r\n  padding: 6px 8px;\r\n  border-radius: 8px;\r\n  font-size: 13px;\r\n  line-height: 20px;\r\n  color: var(--dsw-alias-label-secondary);\r\n}\r\n\r\n.dsh-shutdown-row:nth-child(odd) {\r\n  background: var(--dsw-alias-fill-l1);\r\n}\r\n\r\n.dsh-shutdown-name {\r\n  overflow: hidden;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n}\r\n\r\n/* The one line a user reads before pressing the confirm button. */\r\n.dsh-shutdown-note {\r\n  margin: 8px 0 0;\r\n  font-size: 12px;\r\n  line-height: 18px;\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n";
+
+// src/client/shutdown/stylesheet.ts
+var cls = {
+  list: "dsh-shutdown-list",
+  row: "dsh-shutdown-row",
+  name: "dsh-shutdown-name",
+  note: "dsh-shutdown-note"
+};
+installStylesheet("@dsh-plugins/session-archive/shutdown", shutdown_default);
+
+// src/client/shutdown/ShutdownConfirmation.tsx
 var import_jsx_runtime = require("react/jsx-runtime");
+function ShutdownConfirmation({
+  flow,
+  title,
+  note
+}) {
+  const targets = flow.pending ?? [];
+  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+    import_dsh_client_ui_primitives.Modal,
+    {
+      open: flow.pending !== void 0,
+      onClose: flow.cancel,
+      title,
+      closeLabel: text.close,
+      description: shutdownDescription(targets.length),
+      footer: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_dsh_client_ui_primitives.Button, { variant: "ghost", size: "sm", onClick: flow.cancel, children: text.shutdownCancel }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_dsh_client_ui_primitives.Button, { variant: "primary", size: "sm", disabled: flow.busy, onClick: flow.confirm, children: text.shutdownConfirm })
+      ] }),
+      children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("ul", { className: cls.list, children: targets.map((target) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("li", { className: cls.row, title: target.id, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { className: cls.name, children: target.label }) }, target.id)) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { className: cls.note, children: note })
+      ]
+    }
+  );
+}
+
+// src/client/shutdown/targets.ts
+function backgroundTargets(sessions, currentSessionId) {
+  return sessions.filter((session) => session.id !== currentSessionId).map((session) => ({ id: session.id, label: session.title ?? text.untitledSession }));
+}
+
+// src/client/shutdown/useShutdown.ts
+var import_react = require("react");
+function useShutdown(api, collect, copy4, onReport) {
+  const [busy, setBusy] = (0, import_react.useState)(false);
+  const [pending, setPending] = (0, import_react.useState)(void 0);
+  const start = (0, import_react.useCallback)(() => {
+    if (busy) return;
+    setBusy(true);
+    void (async () => {
+      const plan = await collect();
+      setBusy(false);
+      if (plan.kind === "refused") {
+        onReport({ message: plan.message, ok: false });
+        return;
+      }
+      if (plan.targets.length === 0) {
+        onReport({ message: copy4.nothing, ok: true });
+        return;
+      }
+      setPending(plan.targets);
+    })();
+  }, [busy, collect, copy4, onReport]);
+  const cancel = (0, import_react.useCallback)(() => {
+    setPending(void 0);
+  }, []);
+  const confirm = (0, import_react.useCallback)(() => {
+    const targets = pending;
+    if (targets === void 0 || busy) return;
+    setPending(void 0);
+    setBusy(true);
+    void (async () => {
+      const outcome = await api.shutdown({ ids: targets.map((target) => target.id) });
+      setBusy(false);
+      if (!outcome.ok) {
+        onReport({ message: copy4.transport(outcome), ok: false });
+        return;
+      }
+      const failures = outcome.value.outcomes.filter(
+        (item) => !item.ok
+      );
+      onReport({
+        message: copy4.report(outcome.value.outcomes.length - failures.length, failures),
+        ok: failures.length === 0
+      });
+    })();
+  }, [api, busy, copy4, onReport, pending]);
+  return { busy, pending, start, cancel, confirm };
+}
+
+// src/client/panel/ShutdownAll.tsx
+var import_jsx_runtime2 = require("react/jsx-runtime");
+var copy = {
+  nothing: text.nothingRunning,
+  report: shutdownReport,
+  transport: callFailureText
+};
 function ShutdownAll({
   api,
   enabled,
   icon,
+  currentSessionId,
   onReport
 }) {
-  const [busy, setBusy] = (0, import_react.useState)(false);
-  const shutdown = (0, import_react.useCallback)(async () => {
-    if (busy) return;
-    setBusy(true);
-    const outcome = await api.shutdownAll({});
-    setBusy(false);
-    if (!outcome.ok) {
-      onReport(callFailureText(outcome));
-      return;
+  const collect = (0, import_react2.useCallback)(async () => {
+    const outcome = await api.running({});
+    if (!outcome.ok) return { kind: "refused", message: callFailureText(outcome) };
+    if (outcome.value.catalogError !== void 0) {
+      return { kind: "refused", message: catalogUnreadableText(outcome.value.catalogError) };
     }
-    const failures = outcome.value.outcomes.filter((item) => !item.ok);
-    onReport(
-      outcome.value.outcomes.length === 0 ? text.nothingRunning : [
-        text.shutdownCount(outcome.value.outcomes.length - failures.length),
-        ...failures.length > 0 ? [text.partialFailure(failures.length)] : []
-      ].join("\uFF1B")
-    );
-  }, [api, busy, onReport]);
-  return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-    import_dsh_client_ui_primitives.Button,
-    {
-      variant: "ghost",
-      size: "sm",
-      icon,
-      "aria-label": text.shutdownAll,
-      title: text.shutdownAll,
-      disabled: busy || !enabled,
-      onClick: () => void shutdown()
-    }
-  );
+    return { kind: "targets", targets: backgroundTargets(outcome.value.sessions, currentSessionId) };
+  }, [api, currentSessionId]);
+  const report = (0, import_react2.useCallback)((outcome) => {
+    onReport(outcome.message);
+  }, [onReport]);
+  const flow = useShutdown(api, collect, copy, report);
+  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+      import_dsh_client_ui_primitives2.Button,
+      {
+        variant: "ghost",
+        size: "sm",
+        icon,
+        "aria-label": text.shutdownAll,
+        title: text.shutdownAll,
+        disabled: flow.busy || !enabled,
+        onClick: flow.start
+      }
+    ),
+    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ShutdownConfirmation, { flow, title: text.shutdownTitle, note: text.shutdownCurrentExcluded })
+  ] });
 }
 
 // src/client/format.ts
@@ -345,7 +485,7 @@ function relativeTime(at, now) {
 var panel_default = "/*\r\n * The archive area's looks.\r\n *\r\n * Every colour, and every value that has a host equivalent, is a `--dsw-*`\r\n * theme variable rather than a literal, so the panel follows DSH's light and\r\n * dark themes without knowing either exists. The measurements are the ones\r\n * DSH uses for the same jobs: 34px/32px sidebar rows, 8px row radius, 12px\r\n * tertiary metadata, and .5px `border-l3` dividers around a scrolling middle.\r\n *\r\n * Class names carry a `dsh-archive-` prefix because this stylesheet is global.\r\n * The host's own styles are CSS modules with hashed names, so nothing here can\r\n * collide with them, and nothing here targets them.\r\n */\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 the card itself */\r\n\r\n/*\r\n * Applied to the host `Modal`'s dialog through `className`, which is the only\r\n * supported way to resize it. The three overrides undo defaults meant for a\r\n * confirmation card: 380px wide, no height, and a bottom padding plus a 20px\r\n * gap that a full-bleed header and footer must not inherit.\r\n */\r\n.dsh-archive-panel {\r\n  width: min(680px, 100%);\r\n  height: min(600px, 100dvh - 48px);\r\n  gap: 0;\r\n  padding: 0;\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 header */\r\n\r\n.dsh-archive-head {\r\n  display: flex;\r\n  flex: none;\r\n  align-items: flex-start;\r\n  justify-content: space-between;\r\n  gap: 8px;\r\n  padding: 22px 14px 0 24px;\r\n}\r\n\r\n.dsh-archive-heading {\r\n  display: flex;\r\n  min-width: 0;\r\n  flex-direction: column;\r\n  gap: 4px;\r\n}\r\n\r\n.dsh-archive-title {\r\n  margin: 0;\r\n  font-size: 16px;\r\n  font-weight: 500;\r\n  line-height: 24px;\r\n  color: var(--dsw-alias-label-primary);\r\n}\r\n\r\n.dsh-archive-subtitle {\r\n  margin: 0;\r\n  font-size: 13px;\r\n  line-height: 20px;\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n/* Same box as the host's own modal close button, so the corner looks stock. */\r\n.dsh-archive-close {\r\n  display: inline-flex;\r\n  flex: none;\r\n  width: 28px;\r\n  height: 28px;\r\n  align-items: center;\r\n  justify-content: center;\r\n  border: none;\r\n  border-radius: 8px;\r\n  background: transparent;\r\n  color: var(--dsw-alias-label-secondary);\r\n  cursor: pointer;\r\n}\r\n\r\n.dsh-archive-close:hover {\r\n  background: var(--dsw-alias-interactive-bg-hover);\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 toolbar */\r\n\r\n.dsh-archive-toolbar {\r\n  display: flex;\r\n  flex: none;\r\n  align-items: center;\r\n  gap: 8px;\r\n  padding: 14px 24px 12px;\r\n}\r\n\r\n.dsh-archive-search {\r\n  min-width: 0;\r\n  flex: 1;\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 the scrolling list */\r\n\r\n/*\r\n * The only scroll container. Its `flex: 1; min-height: 0` is what keeps the\r\n * rows inside the card: the host's dialog is `overflow: hidden`, so a list\r\n * that sized itself to its content would simply be out of reach.\r\n */\r\n.dsh-archive-list {\r\n  min-height: 0;\r\n  flex: 1;\r\n  overflow-y: auto;\r\n  padding: 4px 16px 8px 24px;\r\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\r\n}\r\n\r\n.dsh-archive-list::-webkit-scrollbar {\r\n  width: 8px;\r\n}\r\n\r\n.dsh-archive-list::-webkit-scrollbar-thumb {\r\n  border: 2px solid transparent;\r\n  border-radius: 4px;\r\n  background: var(--dsw-alias-scrollbar-bg-l2);\r\n  background-clip: padding-box;\r\n}\r\n\r\n.dsh-archive-list::-webkit-scrollbar-thumb:hover {\r\n  background: var(--dsw-alias-scrollbar-hover-l2);\r\n  background-clip: padding-box;\r\n}\r\n\r\n.dsh-archive-group + .dsh-archive-group {\r\n  margin-top: 6px;\r\n}\r\n\r\n/*\r\n * Sticky, so the workspace a row belongs to stays readable while scrolling.\r\n * The opaque background is the dialog's own fill; without it the rows would\r\n * show through.\r\n */\r\n.dsh-archive-group-head {\r\n  position: sticky;\r\n  top: 0;\r\n  z-index: 1;\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 6px;\r\n  padding: 6px 8px 4px;\r\n  background: var(--dsw-alias-bg-layer-2);\r\n}\r\n\r\n.dsh-archive-group-icon {\r\n  display: inline-flex;\r\n  flex: none;\r\n  color: var(--dsw-alias-label-caption);\r\n}\r\n\r\n.dsh-archive-group-name {\r\n  overflow: hidden;\r\n  font-size: 12px;\r\n  font-weight: 500;\r\n  line-height: 18px;\r\n  white-space: nowrap;\r\n  text-overflow: ellipsis;\r\n  color: var(--dsw-alias-label-tertiary);\r\n}\r\n\r\n.dsh-archive-group-count {\r\n  flex: none;\r\n  font-size: 11px;\r\n  line-height: 18px;\r\n  color: var(--dsw-alias-label-caption);\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n\r\n.dsh-archive-rows {\r\n  display: flex;\r\n  flex-direction: column;\r\n  gap: 1px;\r\n  margin: 0;\r\n  padding: 0;\r\n  list-style: none;\r\n}\r\n\r\n.dsh-archive-row {\r\n  border-radius: 8px;\r\n}\r\n\r\n.dsh-archive-row:hover {\r\n  background: var(--dsw-alias-interactive-bg-hover);\r\n}\r\n\r\n.dsh-archive-row[data-selected='true'] {\r\n  background: var(--dsw-alias-interactive-bg-active, var(--dsw-alias-interactive-bg-hover));\r\n}\r\n\r\n/*\r\n * The whole row toggles, so the checkbox is a target rather than the target.\r\n * One line, at the sidebar's own 34px: the title takes the room it needs and\r\n * the metadata sits against the right edge, which is how every other DSH list\r\n * arranges the same pair.\r\n */\r\n.dsh-archive-row-label {\r\n  display: flex;\r\n  min-height: 34px;\r\n  box-sizing: border-box;\r\n  align-items: center;\r\n  gap: 10px;\r\n  padding: 4px 8px;\r\n  cursor: pointer;\r\n}\r\n\r\n.dsh-archive-check {\r\n  width: 14px;\r\n  height: 14px;\r\n  flex: none;\r\n  margin: 0;\r\n  accent-color: var(--dsw-alias-button-primary-fill);\r\n  cursor: pointer;\r\n}\r\n\r\n.dsh-archive-row-title {\r\n  overflow: hidden;\r\n  min-width: 0;\r\n  flex: 1;\r\n  font-size: 14px;\r\n  line-height: 20px;\r\n  white-space: nowrap;\r\n  text-overflow: ellipsis;\r\n  color: var(--dsw-alias-label-primary);\r\n}\r\n\r\n.dsh-archive-row-meta {\r\n  display: flex;\r\n  flex: none;\r\n  align-items: center;\r\n  gap: 6px;\r\n  font-size: 11px;\r\n  line-height: 16px;\r\n  white-space: nowrap;\r\n  color: var(--dsw-alias-label-tertiary);\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n\r\n.dsh-archive-row-meta > .dsh-archive-sep {\r\n  color: var(--dsw-alias-label-dimmed);\r\n}\r\n\r\n/* \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 notices, status and footer */\r\n\r\n.dsh-archive-notices {\r\n  display: flex;\r\n  flex: none;\r\n  flex-direction: column;\r\n  gap: 4px;\r\n  padding: 12px 24px 0;\r\n}\r\n\r\n.dsh-archive-notice {\r\n  display: flex;\r\n  align-items: center;\r\n  gap: 6px;\r\n  font-size: 12px;\r\n  line-height: 18px;\r\n  color: var(--dsw-alias-label-secondary);\r\n}\r\n\r\n.dsh-archive-notice-subject {\r\n  overflow: hidden;\r\n  font-size: 11px;\r\n  text-overflow: ellipsis;\r\n  white-space: nowrap;\r\n  color: var(--dsw-alias-label-caption);\r\n}\r\n\r\n.dsh-archive-status {\r\n  flex: none;\r\n  padding: 10px 24px 0;\r\n  font-size: 12px;\r\n  line-height: 18px;\r\n  color: var(--dsw-alias-label-secondary);\r\n}\r\n\r\n.dsh-archive-status[data-tone='failed'] {\r\n  color: var(--dsw-alias-state-error-primary);\r\n}\r\n\r\n.dsh-archive-empty {\r\n  display: flex;\r\n  min-height: 0;\r\n  flex: 1;\r\n  flex-wrap: wrap;\r\n  align-items: center;\r\n  justify-content: center;\r\n  gap: 12px;\r\n  margin: 0;\r\n  padding: 24px;\r\n  font-size: 13px;\r\n  line-height: 20px;\r\n  color: var(--dsw-alias-label-tertiary);\r\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\r\n}\r\n\r\n.dsh-archive-foot {\r\n  display: flex;\r\n  flex: none;\r\n  align-items: center;\r\n  gap: 8px;\r\n  padding: 14px 24px;\r\n  border-top: 0.5px solid var(--dsw-alias-border-l3);\r\n}\r\n\r\n.dsh-archive-foot-info {\r\n  display: flex;\r\n  overflow: hidden;\r\n  align-items: center;\r\n  gap: 6px;\r\n  margin-right: auto;\r\n  font-size: 12px;\r\n  line-height: 18px;\r\n  white-space: nowrap;\r\n  color: var(--dsw-alias-label-tertiary);\r\n  font-variant-numeric: tabular-nums;\r\n}\r\n\r\n.dsh-archive-foot-info > .dsh-archive-sep {\r\n  color: var(--dsw-alias-label-dimmed);\r\n}\r\n\r\n/* The line that names the backend; developer information, kept at a whisper. */\r\n.dsh-archive-provenance {\r\n  overflow: hidden;\r\n  flex: none;\r\n  margin: 0;\r\n  padding: 8px 24px 0;\r\n  font-size: 11px;\r\n  line-height: 18px;\r\n  white-space: nowrap;\r\n  text-overflow: ellipsis;\r\n  color: var(--dsw-alias-label-caption);\r\n}\r\n";
 
 // src/client/panel/stylesheet.ts
-var cls = {
+var cls2 = {
   panel: "dsh-archive-panel",
   head: "dsh-archive-head",
   heading: "dsh-archive-heading",
@@ -376,29 +516,24 @@ var cls = {
   footInfo: "dsh-archive-foot-info",
   provenance: "dsh-archive-provenance"
 };
-if (typeof document !== "undefined") {
-  const style = document.createElement("style");
-  style.setAttribute("data-plugin-css", "@dsh-plugins/session-archive/panel");
-  style.textContent = panel_default;
-  document.head.append(style);
-}
+installStylesheet("@dsh-plugins/session-archive/panel", panel_default);
 
 // src/client/panel/useArchive.ts
-var import_react2 = require("react");
-function useArchive(api, open, copy2) {
-  const { describe, transport, unarchived: unarchivedText, deleted: deletedText } = copy2;
-  const [loading, setLoading] = (0, import_react2.useState)(false);
-  const [listing, setListing] = (0, import_react2.useState)(void 0);
-  const [capabilities, setCapabilities] = (0, import_react2.useState)(void 0);
-  const [loadError, setLoadError] = (0, import_react2.useState)(void 0);
-  const [selected, setSelected] = (0, import_react2.useState)(/* @__PURE__ */ new Set());
-  const [busy, setBusy] = (0, import_react2.useState)(false);
-  const [report, setReport] = (0, import_react2.useState)(void 0);
-  const [generation, setGeneration] = (0, import_react2.useState)(0);
-  const reload = (0, import_react2.useCallback)(() => {
+var import_react3 = require("react");
+function useArchive(api, open, copy4) {
+  const { describe, transport, unarchived: unarchivedText, deleted: deletedText } = copy4;
+  const [loading, setLoading] = (0, import_react3.useState)(false);
+  const [listing, setListing] = (0, import_react3.useState)(void 0);
+  const [capabilities, setCapabilities] = (0, import_react3.useState)(void 0);
+  const [loadError, setLoadError] = (0, import_react3.useState)(void 0);
+  const [selected, setSelected] = (0, import_react3.useState)(/* @__PURE__ */ new Set());
+  const [busy, setBusy] = (0, import_react3.useState)(false);
+  const [report, setReport] = (0, import_react3.useState)(void 0);
+  const [generation, setGeneration] = (0, import_react3.useState)(0);
+  const reload = (0, import_react3.useCallback)(() => {
     setGeneration((value) => value + 1);
   }, []);
-  (0, import_react2.useEffect)(() => {
+  (0, import_react3.useEffect)(() => {
     if (!open) return;
     const controller = new AbortController();
     setLoading(true);
@@ -423,25 +558,25 @@ function useArchive(api, open, copy2) {
       controller.abort();
     };
   }, [api, open, generation, transport]);
-  (0, import_react2.useEffect)(() => {
+  (0, import_react3.useEffect)(() => {
     if (open) return;
     setSelected(/* @__PURE__ */ new Set());
     setReport(void 0);
   }, [open]);
-  const toggle = (0, import_react2.useCallback)((id) => {
+  const toggle = (0, import_react3.useCallback)((id) => {
     setSelected((current) => {
       const next = new Set(current);
       if (!next.delete(id)) next.add(id);
       return next;
     });
   }, []);
-  const selectAll = (0, import_react2.useCallback)((ids) => {
+  const selectAll = (0, import_react3.useCallback)((ids) => {
     setSelected((current) => /* @__PURE__ */ new Set([...current, ...ids]));
   }, []);
-  const clearSelection = (0, import_react2.useCallback)(() => {
+  const clearSelection = (0, import_react3.useCallback)(() => {
     setSelected(/* @__PURE__ */ new Set());
   }, []);
-  const run = (0, import_react2.useCallback)(
+  const run = (0, import_react3.useCallback)(
     async (operation, succeeded) => {
       const ids = [...selected];
       if (ids.length === 0 || busy) return;
@@ -465,13 +600,13 @@ function useArchive(api, open, copy2) {
     },
     [busy, describe, reload, selected, transport]
   );
-  const unarchive = (0, import_react2.useCallback)(async () => {
+  const unarchive = (0, import_react3.useCallback)(async () => {
     await run((ids) => api.unarchive({ ids }), unarchivedText);
   }, [api, run, unarchivedText]);
-  const remove = (0, import_react2.useCallback)(async () => {
+  const remove = (0, import_react3.useCallback)(async () => {
     await run((ids) => api.delete({ ids }), deletedText);
   }, [api, run, deletedText]);
-  return (0, import_react2.useMemo)(
+  return (0, import_react3.useMemo)(
     () => ({
       api,
       loading,
@@ -508,31 +643,32 @@ function useArchive(api, open, copy2) {
 }
 
 // src/client/panel/ArchivePanel.tsx
-var import_jsx_runtime2 = require("react/jsx-runtime");
-var copy = {
+var import_jsx_runtime3 = require("react/jsx-runtime");
+var copy2 = {
   describe: (outcome) => `${outcome.id}: ${failureText(outcome.code)}`,
   transport: callFailureText,
   unarchived: (count) => text.unarchivedCount(count),
   deleted: (count) => text.deletedCount(count)
 };
 function Separator() {
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: cls.separator, children: "\xB7" });
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: cls2.separator, children: "\xB7" });
 }
 function createArchivePanel(ctx) {
   const api = createArchiveApi(ctx);
-  return function ArchivePanel({ wide }) {
-    const [open, setOpen] = (0, import_react3.useState)(false);
-    const close = (0, import_react3.useCallback)(() => {
+  return function ArchivePanel({ wide, useSessions }) {
+    const [open, setOpen] = (0, import_react4.useState)(false);
+    const close = (0, import_react4.useCallback)(() => {
       setOpen(false);
     }, []);
-    const state = useArchive(api, open, copy);
-    return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-        import_dsh_client_ui_primitives2.Button,
+    const state = useArchive(api, open, copy2);
+    const currentSessionId = useSessions((sessions) => sessions.current);
+    return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_jsx_runtime3.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+        import_dsh_client_ui_primitives3.Button,
         {
           variant: "ghost",
           size: "sm",
-          icon: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.IconArchiveOutline20, { size: 16 }),
+          icon: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(import_dsh_client_ui_primitives3.IconArchiveOutline20, { size: 16 }),
           "aria-label": text.entryLabel,
           onClick: () => {
             setOpen(true);
@@ -540,61 +676,64 @@ function createArchivePanel(ctx) {
           children: wide === false ? void 0 : text.entryLabel
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_dsh_client_ui_primitives2.Modal, { open, onClose: close, title: text.panelTitle, headless: true, className: cls.panel, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("header", { className: cls.head, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: cls.heading, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("h2", { className: cls.title, children: text.panelTitle }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: cls.subtitle, children: text.panelDescription })
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_dsh_client_ui_primitives3.Modal, { open, onClose: close, title: text.panelTitle, headless: true, className: cls2.panel, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("header", { className: cls2.head, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: cls2.heading, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("h2", { className: cls2.title, children: text.panelTitle }),
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("p", { className: cls2.subtitle, children: text.panelDescription })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { type: "button", className: cls.close, "aria-label": text.close, onClick: close, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.IconCloseOutline16, { size: 14 }) })
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("button", { type: "button", className: cls2.close, "aria-label": text.close, onClick: close, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(import_dsh_client_ui_primitives3.IconCloseOutline16, { size: 14 }) })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(ArchiveBody, { state })
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(ArchiveBody, { state, currentSessionId })
       ] })
     ] });
   };
 }
-function ArchiveBody({ state }) {
-  const [confirming, setConfirming] = (0, import_react3.useState)(false);
-  const [acknowledged, setAcknowledged] = (0, import_react3.useState)(false);
-  const [query, setQuery] = (0, import_react3.useState)("");
-  const [notice, setNotice] = (0, import_react3.useState)(void 0);
-  const now = (0, import_react3.useMemo)(() => Date.now(), [state.listing]);
+function ArchiveBody({
+  state,
+  currentSessionId
+}) {
+  const [confirming, setConfirming] = (0, import_react4.useState)(false);
+  const [acknowledged, setAcknowledged] = (0, import_react4.useState)(false);
+  const [query, setQuery] = (0, import_react4.useState)("");
+  const [notice, setNotice] = (0, import_react4.useState)(void 0);
+  const now = (0, import_react4.useMemo)(() => Date.now(), [state.listing]);
   const entries = state.listing?.entries ?? [];
-  const view = (0, import_react3.useMemo)(() => buildArchiveView(entries, query), [entries, query]);
-  const shown = (0, import_react3.useMemo)(() => view.groups.flatMap((group) => group.entries.map((entry) => entry.id)), [view]);
-  const closeConfirmation = (0, import_react3.useCallback)(() => {
+  const view = (0, import_react4.useMemo)(() => buildArchiveView(entries, query), [entries, query]);
+  const shown = (0, import_react4.useMemo)(() => view.groups.flatMap((group) => group.entries.map((entry) => entry.id)), [view]);
+  const closeConfirmation = (0, import_react4.useCallback)(() => {
     setConfirming(false);
     setAcknowledged(false);
   }, []);
-  const confirmDelete = (0, import_react3.useCallback)(() => {
+  const confirmDelete = (0, import_react4.useCallback)(() => {
     closeConfirmation();
     setNotice(void 0);
     void state.remove();
   }, [closeConfirmation, state]);
   if (state.listing === void 0 && state.loadError === void 0) {
-    return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: cls.empty, children: text.loading });
+    return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("p", { className: cls2.empty, children: text.loading });
   }
   if (state.loadError !== void 0) {
-    return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: cls.empty, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { children: [
+    return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: cls2.empty, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("span", { children: [
         text.loadFailed,
         "\uFF1A",
         state.loadError
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.Button, { variant: "outline", size: "sm", onClick: state.reload, children: text.retry })
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(import_dsh_client_ui_primitives3.Button, { variant: "outline", size: "sm", onClick: state.reload, children: text.retry })
     ] });
   }
   const selectedCount = state.selected.size;
   const status = notice ?? state.report?.message;
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: cls.toolbar, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-        import_dsh_client_ui_primitives2.Input,
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_jsx_runtime3.Fragment, { children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: cls2.toolbar, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+        import_dsh_client_ui_primitives3.Input,
         {
-          className: cls.search,
+          className: cls2.search,
           type: "search",
           value: query,
-          icon: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.IconSearchOutline16, { size: 14 }),
+          icon: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(import_dsh_client_ui_primitives3.IconSearchOutline16, { size: 14 }),
           placeholder: text.searchPlaceholder,
           "aria-label": text.searchPlaceholder,
           disabled: entries.length === 0,
@@ -603,30 +742,31 @@ function ArchiveBody({ state }) {
           }
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-        import_dsh_client_ui_primitives2.Button,
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+        import_dsh_client_ui_primitives3.Button,
         {
           variant: "ghost",
           size: "sm",
-          icon: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.IconRefreshOutline14, { size: 14 }),
+          icon: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(import_dsh_client_ui_primitives3.IconRefreshOutline14, { size: 14 }),
           "aria-label": text.refresh,
           title: text.refresh,
           disabled: state.busy,
           onClick: state.reload
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
         ShutdownAll,
         {
           api: state.api,
           enabled: available(state, "shutdown"),
-          icon: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.IconStopFill16, { size: 14 }),
+          icon: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(import_dsh_client_ui_primitives3.IconStopFill16, { size: 14 }),
+          currentSessionId,
           onReport: setNotice
         }
       )
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(CapabilityNotices, { state }),
-    state.listing?.catalogError !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: cls.empty, children: catalogUnreadableText(state.listing.catalogError) }) : entries.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: cls.empty, children: text.empty }) : view.groups.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: cls.empty, children: text.noMatch }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: cls.list, children: view.groups.map((group) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(CapabilityNotices, { state }),
+    state.listing?.catalogError !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("p", { className: cls2.empty, children: catalogUnreadableText(state.listing.catalogError) }) : entries.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("p", { className: cls2.empty, children: text.empty }) : view.groups.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("p", { className: cls2.empty, children: text.noMatch }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: cls2.list, children: view.groups.map((group) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
       ArchiveGroup,
       {
         group,
@@ -636,22 +776,22 @@ function ArchiveBody({ state }) {
       },
       group.workspaceId ?? ""
     )) }),
-    status === void 0 ? null : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: cls.status, "data-tone": state.report?.kind ?? "ok", children: status }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Provenance, { state }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: cls.foot, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: cls.footInfo, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: text.selectedCount(selectedCount) }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Separator, {}),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: text.totalSize(fileSizeText(state.listing?.totalSizeBytes ?? 0)) }),
-        view.hidden === 0 ? null : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Separator, {}),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: text.hiddenBySearch(view.hidden) })
+    status === void 0 ? null : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("p", { className: cls2.status, "data-tone": state.report?.kind ?? "ok", children: status }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Provenance, { state }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: cls2.foot, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("span", { className: cls2.footInfo, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { children: text.selectedCount(selectedCount) }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Separator, {}),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { children: text.totalSize(fileSizeText(state.listing?.totalSizeBytes ?? 0)) }),
+        view.hidden === 0 ? null : /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_jsx_runtime3.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Separator, {}),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { children: text.hiddenBySearch(view.hidden) })
         ] })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.Button, { variant: "ghost", size: "sm", disabled: shown.length === 0, onClick: () => state.selectAll(shown), children: text.selectAll }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.Button, { variant: "ghost", size: "sm", disabled: selectedCount === 0, onClick: state.clearSelection, children: text.clearSelection }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-        import_dsh_client_ui_primitives2.Button,
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(import_dsh_client_ui_primitives3.Button, { variant: "ghost", size: "sm", disabled: shown.length === 0, onClick: () => state.selectAll(shown), children: text.selectAll }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(import_dsh_client_ui_primitives3.Button, { variant: "ghost", size: "sm", disabled: selectedCount === 0, onClick: state.clearSelection, children: text.clearSelection }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+        import_dsh_client_ui_primitives3.Button,
         {
           variant: "outline",
           size: "sm",
@@ -663,12 +803,12 @@ function ArchiveBody({ state }) {
           children: text.unarchive
         }
       ),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-        import_dsh_client_ui_primitives2.Button,
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+        import_dsh_client_ui_primitives3.Button,
         {
           variant: "primary",
           size: "sm",
-          icon: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.IconTrashOutline16, { size: 14 }),
+          icon: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(import_dsh_client_ui_primitives3.IconTrashOutline16, { size: 14 }),
           disabled: selectedCount === 0 || state.busy || !available(state, "delete"),
           onClick: () => {
             setConfirming(true);
@@ -677,8 +817,8 @@ function ArchiveBody({ state }) {
         }
       )
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-      import_dsh_client_ui_primitives2.RiskConfirmation,
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+      import_dsh_client_ui_primitives3.RiskConfirmation,
       {
         open: confirming,
         title: text.deleteTitle,
@@ -703,13 +843,13 @@ function ArchiveGroup({
   onToggle
 }) {
   const label = group.workspaceId === void 0 ? text.ungrouped : group.title !== void 0 && group.title.length > 0 ? group.title : text.untitledWorkspace;
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("section", { className: cls.group, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("header", { className: cls.groupHead, children: [
-      group.workspaceId === void 0 ? null : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: cls.groupIcon, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.IconFolderClose16, { size: 13 }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: cls.groupName, children: label }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: cls.groupCount, children: text.groupSummary(group.entries.length, fileSizeText(group.sizeBytes)) })
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("section", { className: cls2.group, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("header", { className: cls2.groupHead, children: [
+      group.workspaceId === void 0 ? null : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: cls2.groupIcon, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(import_dsh_client_ui_primitives3.IconFolderClose16, { size: 13 }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: cls2.groupName, children: label }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: cls2.groupCount, children: text.groupSummary(group.entries.length, fileSizeText(group.sizeBytes)) })
     ] }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("ul", { className: cls.rows, children: group.entries.map((entry) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("ul", { className: cls2.rows, children: group.entries.map((entry) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
       ArchiveRow,
       {
         entry,
@@ -736,23 +876,23 @@ function ArchiveRow({
     entry.id,
     ...entry.cwd === void 0 ? [] : [entry.cwd]
   ].join("\n");
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("li", { className: cls.row, "data-selected": String(selected), children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("label", { className: cls.rowLabel, title: detail, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("input", { className: cls.check, type: "checkbox", checked: selected, onChange: onToggle }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: cls.rowTitle, children: entryLabel(entry) }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { className: cls.rowMeta, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { children: [
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("li", { className: cls2.row, "data-selected": String(selected), children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("label", { className: cls2.rowLabel, title: detail, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("input", { className: cls2.check, type: "checkbox", checked: selected, onChange: onToggle }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { className: cls2.rowTitle, children: entryLabel(entry) }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("span", { className: cls2.rowMeta, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("span", { children: [
         text.createdAt,
         " ",
         relativeText(relativeTime(entry.createdAt, now))
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Separator, {}),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Separator, {}),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("span", { children: [
         text.lastActivityAt,
         " ",
         relativeText(relativeTime(activity, now))
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Separator, {}),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: entry.sizeBytes === void 0 ? text.unknownSize : fileSizeText(entry.sizeBytes) })
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Separator, {}),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { children: entry.sizeBytes === void 0 ? text.unknownSize : fileSizeText(entry.sizeBytes) })
     ] })
   ] }) });
 }
@@ -768,18 +908,95 @@ function Provenance({ state }) {
     ...state.capabilities === void 0 ? [] : [`${text.backend}: ${state.capabilities.persistenceBackend} \xB7 v${state.capabilities.version}`]
   ];
   if (parts.length === 0) return null;
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { className: cls.provenance, children: parts.join("\u3000") });
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("p", { className: cls2.provenance, children: parts.join("\u3000") });
 }
 function CapabilityNotices({ state }) {
   const report = state.capabilities?.capabilities;
   if (report === void 0) return null;
   const blocked = ["unarchive", "delete", "shutdown"].map((id) => ({ id, status: report[id] })).filter((entry) => !entry.status.available);
   if (blocked.length === 0) return null;
-  return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { className: cls.notices, children: blocked.map(({ id, status }) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { className: cls.notice, children: [
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(import_dsh_client_ui_primitives2.IconWarningOutline16, { size: 13 }),
-    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: status.code === void 0 ? id : blockText(status.code) }),
-    status.subject === void 0 ? null : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("code", { className: cls.noticeSubject, children: status.subject })
+  return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: cls2.notices, children: blocked.map(({ id, status }) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: cls2.notice, children: [
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(import_dsh_client_ui_primitives3.IconWarningOutline16, { size: 13 }),
+    /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { children: status.code === void 0 ? id : blockText(status.code) }),
+    status.subject === void 0 ? null : /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("code", { className: cls2.noticeSubject, children: status.subject })
   ] }, id)) });
+}
+
+// src/client/shutdown/SessionShutdown.tsx
+var import_dsh_client_ui_primitives4 = require("@deepseek-ai/dsh-client-ui-primitives");
+var import_react6 = require("react");
+
+// src/client/shutdown/useRunningAgent.ts
+var import_react5 = require("react");
+function useRunningAgent(api, sessionId, midTurn, epoch) {
+  const [probed, setProbed] = (0, import_react5.useState)(false);
+  (0, import_react5.useEffect)(() => {
+    let abandoned = false;
+    void (async () => {
+      const outcome = await api.running({});
+      if (abandoned || !outcome.ok) return;
+      setProbed(outcome.value.sessions.some((session) => session.id === sessionId));
+    })();
+    return () => {
+      abandoned = true;
+    };
+  }, [api, sessionId, midTurn, epoch]);
+  return midTurn || probed;
+}
+
+// src/client/shutdown/SessionShutdown.tsx
+var import_jsx_runtime4 = require("react/jsx-runtime");
+var copy3 = {
+  nothing: text.sessionNotRunning,
+  report: shutdownReport,
+  transport: callFailureText
+};
+function createSessionShutdown(ctx) {
+  const api = createArchiveApi(ctx);
+  return function SessionShutdown({ sessionId, useSessions }) {
+    const summary = useSessions((state) => state.byId[sessionId]);
+    const [failure, setFailure] = (0, import_react6.useState)(void 0);
+    const [epoch, setEpoch] = (0, import_react6.useState)(0);
+    const collect = (0, import_react6.useCallback)(
+      async () => ({
+        kind: "targets",
+        targets: [{ id: sessionId, label: summary?.displayTitle ?? text.untitledSession }]
+      }),
+      [sessionId, summary?.displayTitle]
+    );
+    const report = (0, import_react6.useCallback)((outcome) => {
+      setFailure(outcome.ok ? void 0 : outcome.message);
+      setEpoch((previous) => previous + 1);
+    }, []);
+    const flow = useShutdown(api, collect, copy3, report);
+    const live = useRunningAgent(api, sessionId, summary?.running === true, epoch);
+    if (!live && flow.pending === void 0) return null;
+    return /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)(import_jsx_runtime4.Fragment, { children: [
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+        import_dsh_client_ui_primitives4.Button,
+        {
+          variant: "ghost",
+          size: "sm",
+          icon: /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(import_dsh_client_ui_primitives4.IconStopFill16, { size: 14 }),
+          "aria-label": text.shutdownSession,
+          title: text.shutdownSession,
+          disabled: flow.busy,
+          onClick: flow.start
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(ShutdownConfirmation, { flow, title: text.shutdownSessionTitle, note: text.shutdownSessionNote }),
+      failure === void 0 ? null : /* @__PURE__ */ (0, import_jsx_runtime4.jsx)(
+        import_dsh_client_ui_primitives4.Toast,
+        {
+          text: failure,
+          holdMs: 6e3,
+          onDone: () => {
+            setFailure(void 0);
+          }
+        }
+      )
+    ] });
+  };
 }
 
 // src/client/sidebar/adapter.ts
@@ -995,11 +1212,19 @@ var name = "session-archive-client";
 var inject = ["slots"];
 function apply(ctx) {
   const ArchivePanel = createArchivePanel(ctx);
+  const SessionShutdown = createSessionShutdown(ctx);
   ctx.slots.inject(
     "sidebar.footer.action",
     () => ctx.slots.register(
       { name: "sidebar.footer.action", id: "session-archive", order: 400, label: () => text.entryLabel },
       ArchivePanel
+    )
+  );
+  ctx.slots.inject(
+    "conversation.session.header.utilities",
+    () => ctx.slots.register(
+      { name: "conversation.session.header.utilities", id: "session-archive-shutdown", order: 800 },
+      SessionShutdown
     )
   );
   installSidebarButtons(ctx, createArchiveApi(ctx));

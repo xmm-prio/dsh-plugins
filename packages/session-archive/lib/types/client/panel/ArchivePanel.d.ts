@@ -17,6 +17,16 @@ import type { Context } from '@deepseek-ai/cordis';
 export interface FooterActionProps {
     /** Whether the sidebar is expanded; collapsed rows show the icon only. */
     readonly wide?: boolean;
+    /**
+     * Session list and current selection, a standard prop on every slot.
+     *
+     * The host half cannot see which session is selected — that is browser
+     * state, and no host surface publishes it — but this half can, and the
+     * background shutdown needs it to leave the foreground session alone.
+     */
+    readonly useSessions: <T>(selector: (state: {
+        readonly current: string | undefined;
+    }) => T) => T;
 }
 /** The sidebar footer entry, and the archive area it opens. */
 export declare function createArchivePanel(ctx: Context): (props: FooterActionProps) => JSX.Element;

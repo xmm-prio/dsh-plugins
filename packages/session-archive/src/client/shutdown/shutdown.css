@@ -1,0 +1,52 @@
+/*
+ * The shutdown confirmation's list.
+ *
+ * Everything else about the card is the host `Modal`'s own chrome. Only the
+ * body needs styling, and only enough of it that a long list scrolls instead
+ * of pushing the footer off the screen.
+ *
+ * Colours and measurements are `--dsw-*` theme variables and the host's own
+ * row metrics, matching the archive area next to it. Class names carry a
+ * `dsh-shutdown-` prefix because this stylesheet is global.
+ */
+
+.dsh-shutdown-list {
+  display: flex;
+  max-height: min(320px, 45dvh);
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.dsh-shutdown-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+}
+
+.dsh-shutdown-row:nth-child(odd) {
+  background: var(--dsw-alias-fill-l1);
+}
+
+.dsh-shutdown-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The one line a user reads before pressing the confirm button. */
+.dsh-shutdown-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsw-alias-label-tertiary);
+}

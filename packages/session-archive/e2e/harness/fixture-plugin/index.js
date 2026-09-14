@@ -20,7 +20,7 @@ export const inject = ['connection', 'workspaceRegistry', 'sessionPersistence']
 const SESSION_FORMAT_VERSION = 3
 
 /** Endpoints, mounted under `/api` so they inherit the token and Origin fence. */
-const ENDPOINTS = ['seed', 'snapshot', 'archive', 'addSession']
+const ENDPOINTS = ['seed', 'snapshot', 'archive', 'addSession', 'agents', 'resume', 'lifecycle']
 
 /**
  * Mount the fixture endpoints.
@@ -94,6 +94,64 @@ export function apply(ctx, config) {
     archive: async (payload) => {
       for (const id of payload.ids) await ctx.workspaceRegistry.archiveSession(id)
       return { archived: payload.ids.length }
+    },
+
+    /** Which sessions currently have a live agent, straight from the host registry. */
+    agents: async () => ({ live: (ctx.get('agents')?.list() ?? []).map((agent) => agent.id) }),
+
+    /**
+     * Register a fake agent behind a real `agentLoop.lifecycle` effect.
+     *
+     * A real agent fails its teardown when `whenIdle()`, `scope.dispose()`, or
+     * `handle.close()` throws; none of those are reachable without a model, so
+     * the shape is reproduced here: same registry entry, same effect label,
+     * same cordis machinery, with `mode` choosing how the disposer behaves.
+     *
+     * @param payload - `{ id, mode: 'ok' | 'reject' | 'reject-after-detach' }`.
+     */
+    lifecycle: async (payload) => {
+      const { id, mode = 'ok' } = payload
+      const registry = ctx.get('agents')
+      if (registry === undefined) throw new Error('no agents registry in this profile')
+      // `enter`, not `register`: announcing runs the host's own `agent/created`
+      // listeners, which reach into parts of a real agent a fake cannot supply.
+      // `enter` still puts the entry in `list()` and `roots()`, which is all the
+      // teardown path reads. The ids are cross-checked, so the fake carries both.
+      const detach = registry.enter({ id, session: { id } }, undefined)
+      ctx.effect(function* () {
+        yield async () => {
+          if (mode === 'reject') return Promise.reject(new Error(`fixture teardown failure for ${id}`))
+          if (mode === 'slow') await new Promise((resolve) => setTimeout(resolve, 2_000))
+          if (mode === 'slow-reject') {
+            await new Promise((resolve) => setTimeout(resolve, 2_000))
+            throw new Error(`fixture slow failure for ${id}`)
+          }
+          detach()
+          if (mode === 'reject-after-detach') throw new Error(`fixture late failure for ${id}`)
+          return undefined
+        }
+      }, `agentLoop.lifecycle(${id})`)
+      return { installed: id, mode }
+    },
+
+    /**
+     * Resume sessions into live agents the way the web UI does.
+     *
+     * The session controller is the only party that resumes on the web path,
+     * so going through it puts the lifecycle effect on the same fiber a real
+     * user's click would.
+     */
+    resume: async (payload) => {
+      const controller = ctx.get('sessionController')
+      if (controller === undefined) throw new Error('no sessionController in this profile')
+      const resumed = []
+      const failed = []
+      for (const id of payload.ids) {
+        const result = await controller.resolveAgent(id)
+        if ('error' in result) failed.push({ id, error: String(result.error?.message ?? result.error) })
+        else resumed.push(id)
+      }
+      return { resumed, failed }
     },
 
     /** The host's own view of the world, for assertions. */
